@@ -1,0 +1,16 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
+  <title>AV Smartbilling</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div id="app"><div class="splash"><div class="brand-mark">₹</div><p>AV Smartbilling</p><span class="spinner"></span></div></div>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <dialog id="confirm-dialog" class="dialog"><form method="dialog"><p class="eyebrow">Confirm action</p><h2 id="confirm-title">Are you sure?</h2><p id="confirm-message" class="muted"></p><div class="dialog-actions"><button value="cancel" class="button secondary">Cancel</button><button value="confirm" class="button danger">Confirm</button></div></form></dialog>
+  <script src="app.js" defer></script>
+</body>
+</html>

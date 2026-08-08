@@ -1,10 +1,7 @@
 import { mkdir, writeFile } from "node:fs/promises";
 
-const rawUrl = process.env.AVSB_APP_URL;
-if (!rawUrl) {
-  console.error("AVSB_APP_URL is required. Example: AVSB_APP_URL=https://billing.example.com npm run desktop:dist:win");
-  process.exit(1);
-}
+const defaultAppUrl = "https://av-smart-billing.vercel.app";
+const rawUrl = process.env.AVSB_APP_URL || defaultAppUrl;
 
 let url;
 try {

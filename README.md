@@ -1,6 +1,6 @@
 # AV Smartbilling
 
-Configurable billing and license-management platform with a browser Control Center and a locked customer-facing Electron shell.
+Configurable billing and license-management platform with a browser Control Center and a customer-facing offline Electron application.
 
 ## Current milestone
 
@@ -14,7 +14,9 @@ Configurable billing and license-management platform with a browser Control Cent
 - Server-only Supabase clients and validated environment boundaries
 - Cryptographically secure license-key generation/hash utilities
 - Zod request schemas ready for Route Handlers
-- Electron desktop shell that exposes only activation and Billing Desk routes
+- Electron Billing Desk with local SQLite as its working database
+- OS-protected license grant storage and offline signature verification
+- Explicit encrypted cloud backup and restore for computer migration
 
 Supabase Auth, live administration CRUD, browser-phase billing CRUD, license issuance, activation, validation, suspension, revocation, and device-slot reset are connected.
 
@@ -43,32 +45,39 @@ npm run dev
 
 ## Desktop development
 
-The Electron application is deliberately a thin customer shell. It does not package the Next.js source, admin pages, Supabase service-role key, or license-signing private key. Start the web server first, then open a second terminal:
+The Electron application is an isolated local Billing Desk. It packages its own renderer and SQLite repository, but does not package the Next.js source, admin pages, Supabase service-role key, or license-signing private key. For local activation/API development, start the web server first and then open a second terminal:
 
 ```bash
 npm run desktop:dev
 ```
 
-Development connects to `http://localhost:3000`. The shell permits only `/activate`, `/billing/*`, the required license/search APIs, and Next.js assets. `/admin`, `/login`, external navigation, popups, Node integration, and renderer permissions are blocked.
+Development connects license and cloud operations to `http://localhost:3000`. Products, customers, invoices, payments, reports, settings and printing use local SQLite and continue working when that server is stopped. External navigation, popups, Node integration, and renderer permissions are blocked.
 
-The application starts at the Billing Desk when its persistent license cookie is valid. A fresh, expired, revoked, or deactivated installation is redirected to the activation screen automatically.
+The application starts at the local Billing Desk while its signed offline grant remains valid. A fresh or expired installation opens activation/validation. The grant and backup encryption key are protected through the operating system's secure-storage service.
 
-To create the Windows installer, first deploy this Next.js application to an HTTPS server. On macOS/Linux run:
+The production desktop URL defaults to `https://av-smart-billing.vercel.app`. To create the Windows installer, run:
 
 ```bash
-AVSB_APP_URL="https://billing.your-domain.example" npm run desktop:dist:win
-```
-
-Or in Windows PowerShell run:
-
-```powershell
-$env:AVSB_APP_URL="https://billing.your-domain.example"
 npm run desktop:dist:win
 ```
 
-The NSIS installer is written to `release/AV-Smartbilling-Setup-0.1.0.exe`. For a trusted customer release, configure a Windows code-signing certificate through electron-builder's `CSC_LINK` and `CSC_KEY_PASSWORD` environment variables before packaging.
+Use `AVSB_APP_URL` only when deliberately building for a different HTTPS deployment:
 
-This first Electron milestone still uses the hosted Next.js/Supabase billing repository and therefore requires connectivity for billing operations. It must not be described as the completed offline edition. Local SQLite, OS-protected grant storage, offline license verification, signed automatic updates, backup/migrations, and Windows clean-machine testing remain subsequent milestones.
+```bash
+AVSB_APP_URL="https://another-deployment.example" npm run desktop:dist:win
+```
+
+The NSIS installer is written to `release/AV-Smartbilling-Setup-0.2.0.exe`. For a trusted customer release, configure a Windows code-signing certificate through electron-builder's `CSC_LINK` and `CSC_KEY_PASSWORD` environment variables before packaging.
+
+To create both Apple Silicon and Intel macOS installers:
+
+```bash
+npm run desktop:dist:mac
+```
+
+The DMG files are written to `release/AV-Smartbilling-0.2.0-arm64.dmg` and `release/AV-Smartbilling-0.2.0-x64.dmg`. Public distribution should use an Apple Developer ID certificate and notarization; unsigned local builds may be blocked by Gatekeeper.
+
+Normal desktop billing is offline. Internet is used only for initial activation, periodic license validation, explicit encrypted cloud backup/restore, and future updates. Automatic updates and clean-machine installer testing remain subsequent milestones.
 
 ## Verification
 
@@ -96,8 +105,9 @@ Manual smoke test:
 5. Apply `supabase/migrations/202608080003_invoice_customer_snapshots.sql`.
 6. Apply `supabase/migrations/202608080004_license_lifecycle_functions.sql`.
 7. Apply `supabase/migrations/202608080005_licensed_billing_sessions.sql`.
-8. Create the first Auth user, then insert its UUID in `public.profiles` with the `OWNER` role.
-9. Sign in and open `/billing/settings` to create the first billing workspace through the UI.
+8. Apply `supabase/migrations/202608080006_desktop_cloud_backups.sql`.
+9. Create the first Auth user, then insert its UUID in `public.profiles` with the `OWNER` role.
+10. Sign in and open `/billing/settings` to create the first browser billing workspace if it is still needed.
 
 `SUPABASE_SERVICE_ROLE_KEY` and `LICENSE_SIGNING_PRIVATE_KEY` are server-only. Never expose them with a `NEXT_PUBLIC_` prefix or ship them in a browser/Electron bundle.
 
@@ -111,7 +121,7 @@ Manual smoke test:
 6. Use **Suspend** for a temporary block. Use **Revoke permanently** only to cancel the entire license.
 7. On `/activate`, use **Validate stored activation** to test periodic online validation. Signed grants remain valid offline only until their `validUntil` timestamp.
 
-The browser activation screen is a lifecycle simulator. Electron uses a persistent installation UUID and the computer hostname instead of the browser-generated ID. Hardware-backed identity, OS-protected grant storage, and fully local verification remain future hardening work.
+The browser activation screen is a lifecycle simulator. Electron uses a persistent installation UUID and the computer hostname, protects the signed grant with the operating system security service, and verifies its Ed25519 signature locally. Hardware-backed identity remains future hardening work.
 
 ### License signing configuration
 
@@ -126,7 +136,7 @@ Set `LICENSE_SIGNING_PRIVATE_KEY` to the `PRIVATE` value and store it only in se
 ## Architecture
 
 ```text
-Browser admin UI / Electron billing shell
+Browser admin UI
           │
           ▼
 Next.js Route Handlers ── server-only credentials/signing
@@ -134,10 +144,12 @@ Next.js Route Handlers ── server-only credentials/signing
           ▼
 Supabase Auth + PostgreSQL + RLS
 
-Future offline billing operations ── local SQLite (no daily internet required)
+Electron Billing Desk ── local SQLite (no daily internet required)
+          │ explicit encrypted backup/restore only
+          └───────────────────────────────► Supabase billing_backups
 ```
 
-Cloud tables hold platform identity, plans, licenses, devices, activations, and audit records. During browser development, billing data uses a separately scoped Supabase repository and schema. The later Electron adapter will replace that repository with local SQLite so normal desktop billing does not require internet.
+Cloud tables hold platform identity, plans, licenses, devices, activations, audit records, and opaque encrypted desktop snapshots. Electron uses SQLite for operational billing; the browser billing tables remain available without becoming the desktop source of truth.
 
 ## Planned next milestone
 

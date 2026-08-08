@@ -1,7 +1,7 @@
 {
   "name": "av-smartbilling-desktop",
-  "version": "0.1.0",
-  "description": "Customer-facing AV Smartbilling desktop shell",
+  "version": "0.2.0",
+  "description": "Offline-first AV Smartbilling desktop application",
   "author": "AV Smartbilling",
   "private": true,
   "main": "main.cjs",
@@ -10,6 +10,7 @@
     "productName": "AV Smartbilling",
     "electronVersion": "43.3.0",
     "asar": true,
+    "npmRebuild": false,
     "directories": {
       "output": "../release",
       "buildResources": "assets"
@@ -17,7 +18,14 @@
     "files": [
       "main.cjs",
       "preload.cjs",
+      "database.cjs",
+      "license.cjs",
+      "cloud.cjs",
+      "renderer/**/*",
       "package.json"
+    ],
+    "asarUnpack": [
+      "node_modules/better-sqlite3/prebuilds/*.node"
     ],
     "extraResources": [
       {
@@ -32,6 +40,18 @@
       "icon": "assets/icon.png",
       "artifactName": "AV-Smartbilling-Setup-${version}.${ext}"
     },
+    "mac": {
+      "target": [
+        "dmg"
+      ],
+      "icon": "assets/icon.png",
+      "category": "public.app-category.business",
+      "artifactName": "AV-Smartbilling-${version}-${arch}.${ext}"
+    },
+    "dmg": {
+      "title": "AV Smartbilling ${version}",
+      "artifactName": "AV-Smartbilling-${version}-${arch}.${ext}"
+    },
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
@@ -39,5 +59,8 @@
       "createStartMenuShortcut": true,
       "shortcutName": "AV Smartbilling"
     }
+  },
+  "dependencies": {
+    "better-sqlite3": "13.0.3"
   }
 }

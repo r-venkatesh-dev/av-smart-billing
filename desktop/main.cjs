@@ -1,97 +1,135 @@
-/* eslint-disable @typescript-eslint/no-require-imports -- Electron entrypoints use CommonJS without changing the Next.js module mode. */
-const { app, BrowserWindow, Menu, ipcMain, session } = require("electron");
+/* eslint-disable @typescript-eslint/no-require-imports -- Electron entrypoint uses CommonJS without changing the Next.js module mode. */
+const { app, BrowserWindow, Menu, ipcMain, safeStorage, session } = require("electron");
 const { randomUUID } = require("node:crypto");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
+const { createBillingDatabase } = require("./database.cjs");
+const { createCloudClient } = require("./cloud.cjs");
+const { createLicenseStore } = require("./license.cjs");
 
 const PRODUCT_NAME = "AV Smartbilling";
-const PARTITION = "persist:av-smartbilling";
 let mainWindow = null;
-let applicationOrigin = "";
-let startUrl = "";
+let database = null;
+let licenses = null;
+let cloud = null;
 
 function readApplicationUrl() {
   let configuredUrl = process.env.AVSB_APP_URL;
   if (app.isPackaged) {
-    const configPath = path.join(process.resourcesPath, "desktop-config.json");
-    const config = JSON.parse(fs.readFileSync(configPath, "utf8"));
+    const config = JSON.parse(fs.readFileSync(path.join(process.resourcesPath, "desktop-config.json"), "utf8"));
     configuredUrl = config.appUrl;
   }
-
   const parsed = new URL(configuredUrl || "http://localhost:3000");
   const localDevelopment = !app.isPackaged && ["localhost", "127.0.0.1"].includes(parsed.hostname);
-  if (parsed.protocol !== "https:" && !localDevelopment) {
-    throw new Error("The packaged desktop application requires an HTTPS AV Smartbilling server URL.");
-  }
+  if (parsed.protocol !== "https:" && !localDevelopment) throw new Error("The desktop application requires an HTTPS AV Smartbilling server URL.");
   if (parsed.username || parsed.password) throw new Error("The desktop application URL cannot contain credentials.");
   return parsed.origin;
-}
-
-function isAllowedPath(pathname) {
-  return pathname === "/activate"
-    || pathname === "/billing"
-    || pathname.startsWith("/billing/")
-    || pathname === "/api/license/activate"
-    || pathname === "/api/license/validate"
-    || pathname === "/api/search"
-    || pathname.startsWith("/_next/")
-    || pathname === "/favicon.ico";
-}
-
-function isAllowedUrl(value) {
-  try {
-    const parsed = new URL(value);
-    if (parsed.protocol === "data:") return true;
-    if (parsed.protocol === "ws:" || parsed.protocol === "wss:") {
-      const expectedSocketOrigin = applicationOrigin.replace(/^http/, "ws");
-      return !app.isPackaged && parsed.origin === expectedSocketOrigin && parsed.pathname.startsWith("/_next/");
-    }
-    if (parsed.origin !== applicationOrigin) return false;
-    return isAllowedPath(parsed.pathname);
-  } catch {
-    return false;
-  }
 }
 
 function getDeviceIdentity() {
   const identityPath = path.join(app.getPath("userData"), "device-identity.json");
   try {
     const saved = JSON.parse(fs.readFileSync(identityPath, "utf8"));
-    if (typeof saved.id === "string" && saved.id.length >= 32) {
-      return { fingerprint: `avsb-desktop:${saved.id}`, deviceName: saved.deviceName || os.hostname() };
-    }
+    if (typeof saved.id === "string" && saved.id.length >= 32) return { fingerprint: `avsb-desktop:${saved.id}`, deviceName: saved.deviceName || os.hostname() };
   } catch {
-    // A first launch, deleted profile, or invalid file creates a new installation identity.
+    // First launch or deleted profile.
   }
-
   const identity = { id: randomUUID(), deviceName: os.hostname(), createdAt: new Date().toISOString() };
   fs.mkdirSync(path.dirname(identityPath), { recursive: true });
   fs.writeFileSync(identityPath, JSON.stringify(identity), { encoding: "utf8", mode: 0o600 });
   return { fingerprint: `avsb-desktop:${identity.id}`, deviceName: identity.deviceName };
 }
 
-function offlinePage() {
-  const escapedStartUrl = JSON.stringify(startUrl);
-  return `data:text/html;charset=utf-8,${encodeURIComponent(`<!doctype html>
-    <html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-    <title>${PRODUCT_NAME}</title><style>
-    body{margin:0;min-height:100vh;display:grid;place-items:center;background:#f7f8f7;color:#26272a;font-family:Arial,sans-serif}.card{width:min(480px,calc(100% - 40px));border:1px solid #dfe3e1;background:#fff;padding:36px;box-sizing:border-box}small{color:#057c73;font-weight:700;letter-spacing:.16em;text-transform:uppercase}h1{font-family:Georgia,serif;font-weight:400}p{color:#6d716f;line-height:1.6}button{border:0;background:#057c73;color:#fff;padding:13px 20px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;cursor:pointer}
-    </style></head><body><main class="card"><small>AV Smartbilling</small><h1>Unable to reach the billing server</h1><p>Check this computer's internet connection and try again. Your administrator may also need to verify the configured billing URL.</p><button onclick='location.href=${escapedStartUrl}'>Try again</button></main></body></html>`)}`;
+function expose(channel, handler, { licenseRequired = true } = {}) {
+  ipcMain.handle(channel, async (_event, input) => {
+    try {
+      if (licenseRequired) licenses.requireActive();
+      return { ok: true, data: await handler(input || {}) };
+    } catch (error) {
+      console.error(`${channel} failed`, error);
+      return { ok: false, message: error instanceof Error ? error.message : "Operation failed." };
+    }
+  });
 }
 
-function configureSession() {
-  const desktopSession = session.fromPartition(PARTITION);
-  desktopSession.setPermissionRequestHandler((_webContents, _permission, callback) => callback(false));
-  desktopSession.setPermissionCheckHandler(() => false);
-
-  desktopSession.webRequest.onBeforeSendHeaders({ urls: [`${applicationOrigin}/*`] }, (details, callback) => {
-    details.requestHeaders["X-AVSB-Desktop"] = "1";
-    callback({ requestHeaders: details.requestHeaders });
+function initializeBillingName(customerName) {
+  const business = database.getBusiness();
+  if (business.company_name !== "My Business") return;
+  database.saveSettings({
+    companyName: customerName,
+    contactPerson: business.contact_person,
+    email: business.email,
+    phone: business.phone,
+    address: business.address,
+    gstin: business.gstin,
+    invoicePrefix: business.invoice_prefix,
+    lowStockThreshold: business.low_stock_threshold,
+    invoiceFooter: business.invoice_footer,
   });
+}
 
-  desktopSession.webRequest.onBeforeRequest({ urls: ["<all_urls>"] }, (details, callback) => {
-    callback({ cancel: !isAllowedUrl(details.url) });
+function registerIpc() {
+  expose("app:bootstrap", () => ({ license: licenses.status(), device: getDeviceIdentity(), business: database.getBusiness() }), { licenseRequired: false });
+  expose("license:activate", async (input) => {
+    const identity = getDeviceIdentity();
+    const licenseKey = String(input.licenseKey || "").trim().toUpperCase();
+    const result = await cloud.activate({ licenseKey, deviceName: String(input.deviceName || identity.deviceName).trim(), deviceFingerprint: identity.fingerprint });
+    const record = licenses.saveActivation(result, identity.fingerprint, licenseKey, null);
+    initializeBillingName(record.grant.customerName);
+    return licenses.status();
+  }, { licenseRequired: false });
+  expose("license:validate", async () => {
+    const current = licenses.read();
+    if (!current) throw new Error("No activation is stored on this computer.");
+    const result = await cloud.validate({ deviceId: current.grant.deviceId, deviceFingerprint: current.deviceFingerprint });
+    licenses.saveActivation(result, current.deviceFingerprint, null, current);
+    return licenses.status();
+  }, { licenseRequired: false });
+
+  expose("billing:dashboard", () => database.dashboard());
+  expose("billing:customers", () => database.listCustomers());
+  expose("billing:save-customer", (input) => database.saveCustomer(input));
+  expose("billing:delete-customer", (input) => database.deleteCustomer(input.id));
+  expose("billing:products", () => database.listProducts());
+  expose("billing:save-product", (input) => database.saveProduct(input));
+  expose("billing:delete-product", (input) => database.deleteProduct(input.id));
+  expose("billing:invoices", () => database.listInvoices());
+  expose("billing:invoice", (input) => database.getInvoice(input.id));
+  expose("billing:create-invoice", (input) => database.createInvoice(input));
+  expose("billing:payments", () => database.listPayments());
+  expose("billing:record-payment", (input) => database.recordPayment(input));
+  expose("billing:settings", () => database.getBusiness());
+  expose("billing:save-settings", (input) => database.saveSettings(input));
+  expose("billing:reports", () => database.reports());
+
+  expose("cloud:status", async () => {
+    const record = licenses.requireActive();
+    try {
+      const result = await cloud.pullBackup(record.token);
+      return { available: true, metadata: result.metadata };
+    } catch (error) {
+      if (String(error.message).includes("No cloud backup")) return { available: false };
+      throw error;
+    }
+  });
+  expose("cloud:backup", async () => {
+    const record = licenses.requireActive();
+    const snapshot = database.exportSnapshot();
+    const envelope = licenses.encryptSnapshot(snapshot);
+    const counts = database.counts();
+    return cloud.pushBackup(record.token, { envelope, counts, deviceName: getDeviceIdentity().deviceName, appVersion: app.getVersion() });
+  });
+  expose("cloud:restore", async () => {
+    const record = licenses.requireActive();
+    const result = await cloud.pullBackup(record.token);
+    const snapshot = licenses.decryptSnapshot(result.envelope);
+    const backupDirectory = path.join(app.getPath("userData"), "backups");
+    fs.mkdirSync(backupDirectory, { recursive: true });
+    const backupPath = path.join(backupDirectory, `before-cloud-restore-${new Date().toISOString().replaceAll(":", "-")}.sqlite`);
+    await database.backup(backupPath);
+    const restored = database.restoreSnapshot(snapshot);
+    return { ...restored, backupPath, metadata: result.metadata };
   });
 }
 
@@ -107,7 +145,6 @@ function createWindow() {
     autoHideMenuBar: true,
     webPreferences: {
       preload: path.join(__dirname, "preload.cjs"),
-      partition: PARTITION,
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
@@ -115,36 +152,33 @@ function createWindow() {
       devTools: !app.isPackaged,
     },
   });
-
   mainWindow.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
   mainWindow.webContents.on("will-navigate", (event, url) => {
-    if (!isAllowedUrl(url)) event.preventDefault();
-  });
-  mainWindow.webContents.on("did-fail-load", (_event, errorCode, _description, _url, isMainFrame) => {
-    if (isMainFrame && errorCode !== -3 && mainWindow && !mainWindow.isDestroyed()) mainWindow.loadURL(offlinePage());
+    if (!url.startsWith("file:")) event.preventDefault();
   });
   mainWindow.once("ready-to-show", () => mainWindow?.show());
   mainWindow.on("closed", () => { mainWindow = null; });
-  mainWindow.loadURL(startUrl);
+  mainWindow.loadFile(path.join(__dirname, "renderer", "index.html"));
 }
 
 const hasSingleInstanceLock = app.requestSingleInstanceLock();
-if (!hasSingleInstanceLock) {
-  app.quit();
-} else {
+if (!hasSingleInstanceLock) app.quit();
+else {
   app.on("second-instance", () => {
     if (!mainWindow) return;
     if (mainWindow.isMinimized()) mainWindow.restore();
     mainWindow.focus();
   });
-
   app.whenReady().then(() => {
     app.setName(PRODUCT_NAME);
     Menu.setApplicationMenu(null);
-    applicationOrigin = readApplicationUrl();
-    startUrl = `${applicationOrigin}/billing/dashboard`;
-    configureSession();
-    ipcMain.handle("desktop:get-device-identity", () => getDeviceIdentity());
+    session.defaultSession.setPermissionRequestHandler((_contents, _permission, callback) => callback(false));
+    session.defaultSession.setPermissionCheckHandler(() => false);
+    const userDataPath = app.getPath("userData");
+    database = createBillingDatabase(path.join(userDataPath, "av-smartbilling.sqlite"));
+    licenses = createLicenseStore({ userDataPath, safeStorage });
+    cloud = createCloudClient(readApplicationUrl());
+    registerIpc();
     createWindow();
   }).catch((error) => {
     console.error(error);
@@ -153,3 +187,4 @@ if (!hasSingleInstanceLock) {
 }
 
 app.on("window-all-closed", () => app.quit());
+app.on("before-quit", () => database?.close());

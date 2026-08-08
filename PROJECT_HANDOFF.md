@@ -178,12 +178,14 @@ The visual route structure and architecture foundation are implemented, but this
 - Authentication integration tests have not yet been added.
 - Browser-first license generation, activation and validation Route Handlers are implemented, including Ed25519 signed device grants.
 - Admin license suspension, permanent revocation and device-slot reset/deactivation are implemented with confirmations and audit writes.
-- `/activate` provides a localhost lifecycle simulator; Electron-side public-key verification and OS-protected grant storage remain future work.
+- `/activate` provides a browser lifecycle simulator; Electron uses persistent installation identity, OS-protected grant storage, and local Ed25519 verification.
 - The initial invoice form currently creates a single-product invoice; multi-line invoice editing remains.
 - SQLite and true offline persistence are not yet implemented.
 - Browser print/PDF invoice output and reports are implemented; backup/sync and update delivery are not yet implemented.
-- A locked Electron thin shell has been added for customer-facing activation and Billing Desk access. It packages no admin source or server secrets and blocks admin/login navigation.
-- The first desktop shell still connects to the hosted Next.js/Supabase application. SQLite, true offline operation, protected grant storage and automatic updates remain future work.
+- Electron now bundles an isolated Billing Desk renderer backed by local SQLite. Products, customers, invoices, payments, settings and reports do not use Supabase during normal operation.
+- License grants and the deterministic cloud-backup encryption key are stored with Electron `safeStorage`; signed grants are verified locally for the offline validation window.
+- Explicit cloud backup/restore uses an AES-256-GCM encrypted, gzip-compressed snapshot stored in `billing_backups`. A local SQLite safety copy is created before restore.
+- Automatic updates and clean-machine installer testing remain future work.
 
 Do not describe browser Supabase billing persistence as the completed offline desktop storage layer.
 
@@ -274,9 +276,9 @@ Required endpoints:
 
 Only after the browser application is stable:
 
-1. Add Electron as a thin desktop wrapper without rewriting React pages. **Implemented as a locked hosted-app shell.**
-2. Add local SQLite and secure storage.
-3. Add device fingerprinting and local verification of signed license payloads.
+1. Add Electron as a customer-facing desktop application without packaging the Control Center. **Implemented.**
+2. Add local SQLite and secure storage. **Implemented.**
+3. Add installation identity and local verification of signed license payloads. **Implemented; hardware-backed identity can be added later.**
 4. Package a Windows installer and `.exe`.
 5. Test normal billing with no internet on a clean Windows machine.
 6. Test initial activation, offline validation window, expiry, suspension, revocation, device reset, updates, and clock-tampering scenarios.

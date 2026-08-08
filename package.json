@@ -1,6 +1,6 @@
 {
   "name": "av-smartbilling",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "scripts": {
     "dev": "next dev",
@@ -9,7 +9,8 @@
     "lint": "eslint .",
     "typecheck": "next typegen && tsc --noEmit",
     "desktop:dev": "electron desktop",
-    "desktop:dist:win": "node desktop/scripts/prepare-config.mjs && electron-builder --projectDir desktop --win nsis --x64"
+    "desktop:dist:win": "node desktop/scripts/prepare-config.mjs && electron-builder --projectDir desktop --win nsis --x64",
+    "desktop:dist:mac": "node desktop/scripts/prepare-config.mjs && electron-builder --projectDir desktop --mac dmg --arm64 --x64"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.4",
