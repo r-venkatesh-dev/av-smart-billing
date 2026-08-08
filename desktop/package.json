@@ -1,0 +1,43 @@
+{
+  "name": "av-smartbilling-desktop",
+  "version": "0.1.0",
+  "description": "Customer-facing AV Smartbilling desktop shell",
+  "author": "AV Smartbilling",
+  "private": true,
+  "main": "main.cjs",
+  "build": {
+    "appId": "in.avsmartbilling.desktop",
+    "productName": "AV Smartbilling",
+    "electronVersion": "43.3.0",
+    "asar": true,
+    "directories": {
+      "output": "../release",
+      "buildResources": "assets"
+    },
+    "files": [
+      "main.cjs",
+      "preload.cjs",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "generated/desktop-config.json",
+        "to": "desktop-config.json"
+      }
+    ],
+    "win": {
+      "target": [
+        "nsis"
+      ],
+      "icon": "assets/icon.png",
+      "artifactName": "AV-Smartbilling-Setup-${version}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "AV Smartbilling"
+    }
+  }
+}
