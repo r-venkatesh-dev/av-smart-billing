@@ -100,28 +100,12 @@ export async function deleteBillingProduct(id: string): Promise<DeleteProductRes
   if (product.error) return { ok: false, message: product.error.message };
   if (!product.data) return { ok: false, message: "Product not found." };
 
-  const references = await supabase.from("billing_invoice_items").select("id", { count: "exact", head: true }).eq("product_id", id);
-  if (references.error) return { ok: false, message: references.error.message };
-
-  let mode: "deleted" | "archived";
-  if ((references.count ?? 0) > 0) {
-    const archived = await supabase.from("billing_products").update({ status: "INACTIVE" }).eq("id", id).eq("business_id", business.id);
-    if (archived.error) return { ok: false, message: archived.error.message };
-    mode = "archived";
-  } else {
-    const removed = await supabase.from("billing_products").delete().eq("id", id).eq("business_id", business.id);
-    if (removed.error) {
-      if (removed.error.code !== "23503") return { ok: false, message: removed.error.message };
-      const archived = await supabase.from("billing_products").update({ status: "INACTIVE" }).eq("id", id).eq("business_id", business.id);
-      if (archived.error) return { ok: false, message: archived.error.message };
-      mode = "archived";
-    } else {
-      mode = "deleted";
-    }
-  }
+  const removed = await supabase.rpc("delete_billing_product", { p_business_id: business.id, p_product_id: id });
+  if (removed.error) return { ok: false, message: removed.error.message };
+  const mode = removed.data === "deleted" ? "deleted" : "archived";
   revalidatePath("/billing/products");
   revalidatePath("/billing/invoices/new");
-  return { ok: true, mode, message: mode === "deleted" ? `${product.data.name} was permanently deleted.` : `${product.data.name} is used by an invoice, so it was archived safely.` };
+  return { ok: true, mode, message: mode === "deleted" ? `${product.data.name} was permanently deleted.` : `${product.data.name} was removed from the catalogue. Historical invoices remain intact.` };
 }
 
 export async function createBillingInvoice(_state: BillingFormState, formData: FormData): Promise<BillingFormState> {

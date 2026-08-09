@@ -110,8 +110,9 @@ Manual smoke test:
 7. Apply `supabase/migrations/202608080005_licensed_billing_sessions.sql`.
 8. Apply `supabase/migrations/202608080006_desktop_cloud_backups.sql`.
 9. Apply `supabase/migrations/202608090001_pos_inventory_and_backup_history.sql`.
-10. Create the first Auth user, then insert its UUID in `public.profiles` with the `OWNER` role.
-11. Sign in and open `/billing/settings` to create the first browser billing workspace if it is still needed.
+10. Apply `supabase/migrations/202608090002_product_delete_semantics.sql`.
+11. Create the first Auth user, then insert its UUID in `public.profiles` with the `OWNER` role.
+12. Sign in and open `/billing/settings` to create the first browser billing workspace if it is still needed.
 
 `SUPABASE_SERVICE_ROLE_KEY` and `LICENSE_SIGNING_PRIVATE_KEY` are server-only. Never expose them with a `NEXT_PUBLIC_` prefix or ship them in a browser/Electron bundle.
 

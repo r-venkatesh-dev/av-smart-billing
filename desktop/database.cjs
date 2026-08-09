@@ -306,15 +306,16 @@ function createBillingDatabase(databasePath) {
     return { id, message: existing ? "Product updated." : "Product created." };
   });
 
-  function deleteProduct(id) {
-    const used = db.prepare("select (select count(*) from invoice_items where product_id=?) + (select count(*) from stock_movements where product_id=?) count").get(id, id).count;
-    if (used) {
+  const deleteProduct = db.transaction((id) => {
+    const usedByInvoice = db.prepare("select count(*) count from invoice_items where product_id=?").get(id).count;
+    if (usedByInvoice) {
       db.prepare("update products set status='INACTIVE',updated_at=? where id=?").run(now(), id);
-      return { message: "Product has invoice history and was archived safely." };
+      return { mode: "archived", message: "Product was removed from the catalogue. Its invoice history remains available." };
     }
+    db.prepare("delete from stock_movements where product_id=?").run(id);
     db.prepare("delete from products where id=?").run(id);
-    return { message: "Product deleted." };
-  }
+    return { mode: "deleted", message: "Product permanently deleted." };
+  });
 
   const createInvoice = db.transaction((input) => {
     const business = getBusiness();
