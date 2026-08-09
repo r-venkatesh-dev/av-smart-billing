@@ -8,6 +8,8 @@ export const billingBusinessSchema = z.object({
   phone: z.string().trim().max(40), address: z.string().trim().max(500), gstin: optionalGstin,
   currencyCode: z.string().trim().toUpperCase().regex(/^[A-Z]{3}$/), invoicePrefix: z.string().trim().toUpperCase().regex(/^[A-Z0-9-]{1,12}$/),
   lowStockThreshold: z.coerce.number().min(0).max(100000000),
+  stateCode: z.string().trim().refine((value) => !value || /^[0-9]{2}$/.test(value), "Enter a two-digit GST state code."),
+  invoiceTerms: z.string().trim().max(1500), invoiceFooter: z.string().trim().max(500), thermalPaperWidth: z.coerce.number().refine((value) => value === 58 || value === 80, "Choose 58mm or 80mm."),
 });
 
 export const billingCustomerSchema = z.object({
@@ -15,8 +17,12 @@ export const billingCustomerSchema = z.object({
 });
 
 export const billingProductSchema = z.object({
-  name: z.string().trim().min(2).max(180), sku: z.string().trim().min(1).max(80).toUpperCase(), description: z.string().trim().max(500), unit: z.string().trim().min(1).max(24),
-  priceInRupees: z.string().trim().regex(/^\d+(?:\.\d{1,2})?$/, "Enter a valid rupee amount."), taxRatePercent: z.string().trim().regex(/^\d+(?:\.\d{1,2})?$/, "Enter a valid percentage.").refine((value) => Number(value) <= 100, "Tax cannot exceed 100%."), stockQuantity: z.coerce.number().min(0).max(100000000),
+  name: z.string().trim().min(2).max(180), sku: z.string().trim().min(1).max(80).toUpperCase(),
+  barcode: z.string().trim().max(80).refine((value) => !value || /^[A-Za-z0-9._/-]{4,80}$/.test(value), "Use 4–80 barcode characters: letters, numbers, dot, slash, underscore or hyphen."),
+  category: z.string().trim().max(120), hsnSac: z.string().trim().toUpperCase().max(20), description: z.string().trim().max(500), unit: z.string().trim().min(1).max(24),
+  purchasePriceInRupees: z.string().trim().regex(/^\d+(?:\.\d{1,2})?$/, "Enter a valid purchase price."),
+  priceInRupees: z.string().trim().regex(/^\d+(?:\.\d{1,2})?$/, "Enter a valid selling price."), taxRatePercent: z.string().trim().regex(/^\d+(?:\.\d{1,2})?$/, "Enter a valid percentage.").refine((value) => Number(value) <= 100, "Tax cannot exceed 100%."), stockQuantity: z.coerce.number().min(0).max(100000000),
+  lowStockThreshold: z.preprocess((value) => value === "" ? null : value, z.coerce.number().min(0).max(100000000).nullable()),
   status: z.enum(["ACTIVE", "INACTIVE"]),
 });
 
@@ -31,4 +37,31 @@ export const billingInvoiceSchema = z.object({
 
 export const billingPaymentSchema = z.object({
   invoiceId: z.string().uuid(), amountInRupees: z.string().trim().regex(/^\d+(?:\.\d{1,2})?$/, "Enter a valid payment amount.").refine((value) => Number(value) > 0, "Payment must be positive."), method: z.enum(["CASH", "CARD", "UPI", "BANK_TRANSFER", "OTHER"]), reference: z.string().trim().max(120), notes: z.string().trim().max(1000),
+});
+
+export const billingPosSchema = z.object({
+  customerId: z.string().uuid().nullable(),
+  walkInName: z.string().trim().max(180),
+  walkInPhone: z.string().trim().max(40),
+  items: z.array(z.object({
+    productId: z.string().uuid(),
+    quantity: z.coerce.number().positive().max(1000000),
+    discountPercent: z.coerce.number().min(0).max(100),
+  })).min(1).max(200),
+  paymentMethod: z.enum(["CASH", "CARD", "UPI", "BANK_TRANSFER", "OTHER", "CREDIT"]),
+  amountReceivedInRupees: z.string().trim().regex(/^\d+(?:\.\d{1,2})?$/, "Enter a valid amount received."),
+  reference: z.string().trim().max(120),
+  taxType: z.enum(["INTRA_STATE", "INTER_STATE"]),
+}).superRefine((value, context) => {
+  if (value.customerId) return;
+  if (value.walkInName.length < 2) context.addIssue({ code: "custom", path: ["walkInName"], message: "Enter the walk-in customer's name." });
+  if (value.walkInPhone.length < 5) context.addIssue({ code: "custom", path: ["walkInPhone"], message: "Enter the walk-in customer's mobile number." });
+});
+
+export const billingStockAdjustmentSchema = z.object({
+  productId: z.string().uuid(),
+  movementType: z.enum(["PURCHASE", "RETURN", "ADJUSTMENT"]),
+  quantity: z.coerce.number().min(0).max(100000000),
+  reference: z.string().trim().max(120),
+  notes: z.string().trim().max(500),
 });

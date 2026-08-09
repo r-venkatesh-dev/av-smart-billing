@@ -19,7 +19,8 @@ function createCloudClient(baseUrl) {
     activate: (input) => request(`${baseUrl}/api/license/activate`, { method: "POST", headers: { "Content-Type": "application/json", "User-Agent": "AV-Smartbilling-Desktop" }, body: JSON.stringify(input) }),
     validate: (input) => request(`${baseUrl}/api/license/validate`, { method: "POST", headers: { "Content-Type": "application/json", "User-Agent": "AV-Smartbilling-Desktop" }, body: JSON.stringify(input) }),
     pushBackup: (token, body) => request(`${baseUrl}/api/desktop/backup`, { method: "PUT", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}`, "User-Agent": "AV-Smartbilling-Desktop" }, body: JSON.stringify(body) }),
-    pullBackup: (token) => request(`${baseUrl}/api/desktop/backup`, { method: "GET", headers: { Authorization: `Bearer ${token}`, "User-Agent": "AV-Smartbilling-Desktop" } }),
+    listBackups: (token) => request(`${baseUrl}/api/desktop/backup?list=1`, { method: "GET", headers: { Authorization: `Bearer ${token}`, "User-Agent": "AV-Smartbilling-Desktop" } }),
+    pullBackup: (token, id) => request(`${baseUrl}/api/desktop/backup${id ? `?id=${encodeURIComponent(id)}` : ""}`, { method: "GET", headers: { Authorization: `Bearer ${token}`, "User-Agent": "AV-Smartbilling-Desktop" } }),
   };
 }
 

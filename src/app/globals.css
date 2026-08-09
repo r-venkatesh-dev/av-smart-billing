@@ -84,6 +84,22 @@ h1, h2, h3 { font-family: var(--serif); text-wrap: pretty; }
 
 .page-enter { animation: enter 260ms ease-out both; }
 
+.thermal-invoice-print { display: none; margin: 0 auto; background: white; color: #111; font: 11px Arial, sans-serif; }
+.thermal-invoice-print.thermal-80 { width: 76mm; }
+.thermal-invoice-print.thermal-58 { width: 54mm; font-size: 9px; }
+.thermal-invoice-print header, .thermal-invoice-print footer { text-align: center; }
+.thermal-invoice-print h1 { margin: 0 0 5px; font: 700 17px Arial, sans-serif; }
+.thermal-invoice-print p { margin: 3px 0; line-height: 1.35; }
+.thermal-rule { border-top: 1px dashed #222; margin: 8px 0; }
+.thermal-invoice-print table { width: 100%; border-collapse: collapse; }
+.thermal-invoice-print td { padding: 4px 0; vertical-align: top; }
+.thermal-invoice-print td:last-child { text-align: right; }
+.thermal-invoice-print td small { display: block; margin-top: 2px; }
+.thermal-invoice-print dl { margin: 0; }
+.thermal-invoice-print dl div { display: flex; justify-content: space-between; padding: 2px 0; }
+.thermal-invoice-print dt, .thermal-invoice-print dd { margin: 0; }
+.thermal-invoice-print .thermal-grand { border-top: 1px solid #111; margin-top: 4px; padding-top: 5px; font-size: 14px; font-weight: 800; }
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; animation-duration: 0.01ms !important; }
 }
@@ -95,5 +111,9 @@ h1, h2, h3 { font-family: var(--serif); text-wrap: pretty; }
   .app-shell-body { padding-left: 0 !important; }
   .app-shell-main { max-width: none !important; padding: 0 !important; }
   .invoice-print-sheet { border: 0 !important; box-shadow: none !important; }
+  body[data-invoice-print="thermal"] .a4-invoice-print { display: none !important; }
+  body[data-invoice-print="thermal"] .thermal-invoice-print { display: block !important; }
+  body[data-invoice-print="a4"] .a4-invoice-print { display: block !important; }
+  body[data-invoice-print="a4"] .thermal-invoice-print { display: none !important; }
   .page-enter { animation: none !important; }
 }

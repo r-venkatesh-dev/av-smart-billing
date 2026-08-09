@@ -1,6 +1,6 @@
 # AV Smartbilling — Project Handoff and Continuation Summary
 
-Last updated: 8 August 2026
+Last updated: 9 August 2026
 
 ## Product goal
 
@@ -27,6 +27,16 @@ The same billing application will support different businesses through per-busin
 - A fully offline application cannot be completely piracy-proof; the target is practical protection using signed payloads, device limits, periodic validation, revocation, and secure local storage.
 
 ## Work completed
+
+### POS, inventory, GST and versioned backup milestone (v0.3.0)
+
+- Browser and offline desktop Quick POS screens support local/offline barcode lookup, product search, cart quantity/discount controls, customer capture, GST calculation, cash/UPI/card/bank/credit payment choices, and keyboard shortcuts.
+- Desktop POS supports hold/resume and automatic 58mm/80mm receipt printing; professional invoices support A4/PDF output.
+- Products now include unique barcode, category, HSN/SAC, purchase price, selling price, GST, unit, opening/current stock, and optional low-stock threshold.
+- SQLite schema v2 migrates existing installations additively and records opening stock, product-editor adjustments, purchases, returns, and sales in `stock_movements`.
+- Cloud snapshot restore accepts both legacy schema v1 and current schema v2 backups.
+- Cloud backups are versioned recovery points rather than a single overwritten row; Settings lists available versions for explicit restore.
+- Supabase migration `202608090001_pos_inventory_and_backup_history.sql` aligns the browser adapter with the expanded logical model and adds transactional POS and stock-adjustment functions.
 
 The project is located at:
 

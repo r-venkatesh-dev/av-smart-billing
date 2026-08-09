@@ -20,6 +20,7 @@ const backupSchema = z.object({
     products: z.number().int().nonnegative(),
     invoices: z.number().int().nonnegative(),
     payments: z.number().int().nonnegative(),
+    stockMovements: z.number().int().nonnegative().optional(),
   }),
   deviceName: z.string().trim().min(1).max(120),
   appVersion: z.string().trim().min(1).max(40),
@@ -51,14 +52,23 @@ async function authorize(request: Request) {
   return { grant, supabase };
 }
 
-function metadata(row: { backed_up_at: string; device_name: string; app_version: string; record_counts: unknown }) {
-  return { backedUpAt: row.backed_up_at, deviceName: row.device_name, appVersion: row.app_version, counts: row.record_counts };
+function metadata(row: { id: string; backed_up_at: string; device_name: string; app_version: string; record_counts: unknown }) {
+  return { id: row.id, backedUpAt: row.backed_up_at, deviceName: row.device_name, appVersion: row.app_version, counts: row.record_counts };
 }
 
 export async function GET(request: Request) {
   try {
     const { grant, supabase } = await authorize(request);
-    const { data, error } = await supabase.from("billing_backups").select("envelope, backed_up_at, device_name, app_version, record_counts").eq("license_id", grant.licenseId).maybeSingle();
+    const url = new URL(request.url);
+    if (url.searchParams.get("list") === "1") {
+      const { data, error } = await supabase.from("billing_backups").select("id, backed_up_at, device_name, app_version, record_counts").eq("license_id", grant.licenseId).order("backed_up_at", { ascending: false }).limit(50);
+      if (error) throw new Error(error.message);
+      return Response.json({ ok: true, backups: (data ?? []).map(metadata) }, { headers: { "Cache-Control": "no-store" } });
+    }
+    const requestedId = url.searchParams.get("id");
+    let query = supabase.from("billing_backups").select("id, envelope, backed_up_at, device_name, app_version, record_counts").eq("license_id", grant.licenseId);
+    query = requestedId ? query.eq("id", requestedId) : query.order("backed_up_at", { ascending: false }).limit(1);
+    const { data, error } = await query.maybeSingle();
     if (error) throw new Error(error.message);
     if (!data) return Response.json({ ok: false, message: "No cloud backup exists for this license." }, { status: 404 });
     return Response.json({ ok: true, envelope: data.envelope, metadata: metadata(data) }, { headers: { "Cache-Control": "no-store" } });
@@ -75,7 +85,7 @@ export async function PUT(request: Request) {
     const parsed = backupSchema.safeParse(await request.json().catch(() => null));
     if (!parsed.success) return Response.json({ ok: false, message: "The encrypted backup payload is invalid or too large." }, { status: 400 });
     const backedUpAt = new Date().toISOString();
-    const { data, error } = await supabase.from("billing_backups").upsert({
+    const { data, error } = await supabase.from("billing_backups").insert({
       license_id: grant.licenseId,
       device_id: grant.deviceId,
       device_name: parsed.data.deviceName,
@@ -83,7 +93,7 @@ export async function PUT(request: Request) {
       envelope: parsed.data.envelope,
       record_counts: parsed.data.counts,
       backed_up_at: backedUpAt,
-    }, { onConflict: "license_id" }).select("backed_up_at, device_name, app_version, record_counts").single();
+    }).select("id, backed_up_at, device_name, app_version, record_counts").single();
     if (error) throw new Error(error.message);
     return Response.json({ ok: true, message: "Encrypted cloud backup completed.", metadata: metadata(data) }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {

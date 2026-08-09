@@ -17,7 +17,7 @@ export async function getBillingBusiness() {
   const supabase = await createBillingDataClient();
   let query = supabase
     .from("billing_businesses")
-    .select("id, company_name, contact_person, email, phone, address, gstin, currency_code, invoice_prefix, next_invoice_number, low_stock_threshold, status, created_at")
+    .select("id, company_name, contact_person, email, phone, address, gstin, state_code, currency_code, invoice_prefix, next_invoice_number, low_stock_threshold, invoice_terms, invoice_footer, thermal_paper_width, status, created_at")
     .eq("status", "ACTIVE")
     .order("created_at")
     .limit(1);
@@ -33,10 +33,14 @@ export async function getBillingBusiness() {
     phone: data.phone,
     address: data.address,
     gstin: data.gstin,
+    stateCode: data.state_code,
     currencyCode: data.currency_code,
     invoicePrefix: data.invoice_prefix,
     nextInvoiceNumber: Number(data.next_invoice_number),
     lowStockThreshold: Number(data.low_stock_threshold),
+    invoiceTerms: data.invoice_terms,
+    invoiceFooter: data.invoice_footer,
+    thermalPaperWidth: Number(data.thermal_paper_width) as 58 | 80,
   };
 }
 
@@ -69,18 +73,23 @@ export async function listBillingProducts() {
   const supabase = await createBillingDataClient();
   const { data, error } = await supabase
     .from("billing_products")
-    .select("id, name, sku, description, unit, price_in_paise, tax_rate_basis_points, stock_quantity, status, created_at")
+    .select("id, name, sku, barcode, category, hsn_sac, description, unit, purchase_price_in_paise, price_in_paise, tax_rate_basis_points, stock_quantity, low_stock_threshold, status, created_at")
     .eq("business_id", business.id)
     .order("name");
   const products = assertQuery(data, error).map((row) => ({
     id: row.id,
     name: row.name,
     sku: row.sku,
+    barcode: row.barcode,
+    category: row.category,
+    hsnSac: row.hsn_sac,
     description: row.description,
     unit: row.unit,
+    purchasePriceInPaise: Number(row.purchase_price_in_paise),
     priceInPaise: Number(row.price_in_paise),
     taxRateBasisPoints: row.tax_rate_basis_points,
     stockQuantity: Number(row.stock_quantity),
+    lowStockThreshold: row.low_stock_threshold === null ? null : Number(row.low_stock_threshold),
     status: row.status,
     createdAt: row.created_at,
   }));
@@ -93,7 +102,7 @@ export async function getBillingProduct(id: string) {
   const supabase = await createBillingDataClient();
   const { data, error } = await supabase
     .from("billing_products")
-    .select("id, name, sku, description, unit, price_in_paise, tax_rate_basis_points, stock_quantity, status")
+    .select("id, name, sku, barcode, category, hsn_sac, description, unit, purchase_price_in_paise, price_in_paise, tax_rate_basis_points, stock_quantity, low_stock_threshold, status")
     .eq("id", id)
     .eq("business_id", business.id)
     .maybeSingle();
@@ -105,11 +114,16 @@ export async function getBillingProduct(id: string) {
       id: data.id,
       name: data.name,
       sku: data.sku,
+      barcode: data.barcode,
+      category: data.category,
+      hsnSac: data.hsn_sac,
       description: data.description ?? "",
       unit: data.unit,
+      purchasePriceInPaise: Number(data.purchase_price_in_paise),
       priceInPaise: Number(data.price_in_paise),
       taxRateBasisPoints: Number(data.tax_rate_basis_points),
       stockQuantity: Number(data.stock_quantity),
+      lowStockThreshold: data.low_stock_threshold === null ? null : Number(data.low_stock_threshold),
       status: data.status,
     },
   };
@@ -148,22 +162,27 @@ export async function getBillingInvoice(id: string) {
   const supabase = await createBillingDataClient();
   const { data, error } = await supabase
     .from("billing_invoices")
-    .select("id, invoice_number, customer_name, customer_email, customer_phone, customer_address, customer_gstin, issued_at, due_at, status, subtotal_in_paise, tax_in_paise, total_in_paise, notes, billing_invoice_items(id, description, quantity, unit_price_in_paise, tax_rate_basis_points, line_subtotal_in_paise, line_tax_in_paise, billing_products(sku, unit)), billing_payments(id, amount_in_paise, method, reference, paid_at, notes)")
+    .select("id, invoice_number, customer_name, customer_email, customer_phone, customer_address, customer_gstin, shipping_address, issued_at, due_at, status, subtotal_in_paise, discount_in_paise, tax_in_paise, total_in_paise, notes, terms, sale_mode, tax_type, billing_invoice_items(id, description, sku, hsn_sac, unit, quantity, unit_price_in_paise, tax_rate_basis_points, discount_in_paise, taxable_in_paise, cgst_in_paise, sgst_in_paise, igst_in_paise, line_subtotal_in_paise, line_tax_in_paise), billing_payments(id, amount_in_paise, method, reference, paid_at, notes)")
     .eq("id", id)
     .eq("business_id", business.id)
     .maybeSingle();
   if (error) throw new Error(`Supabase query failed: ${error.message}`);
   if (!data) return { business, invoice: null };
   const items = (data.billing_invoice_items ?? []).map((item) => {
-    const product = one(item.billing_products);
     return {
       id: item.id,
       description: item.description,
-      sku: product?.sku ?? "—",
-      unit: product?.unit ?? "unit",
+      sku: item.sku || "—",
+      hsnSac: item.hsn_sac,
+      unit: item.unit || "unit",
       quantity: Number(item.quantity),
       unitPriceInPaise: Number(item.unit_price_in_paise),
       taxRateBasisPoints: Number(item.tax_rate_basis_points),
+      discountInPaise: Number(item.discount_in_paise),
+      taxableInPaise: Number(item.taxable_in_paise),
+      cgstInPaise: Number(item.cgst_in_paise),
+      sgstInPaise: Number(item.sgst_in_paise),
+      igstInPaise: Number(item.igst_in_paise),
       subtotalInPaise: Number(item.line_subtotal_in_paise),
       taxInPaise: Number(item.line_tax_in_paise),
     };
@@ -188,11 +207,16 @@ export async function getBillingInvoice(id: string) {
       dueAt: data.due_at,
       status: data.status,
       subtotalInPaise: Number(data.subtotal_in_paise),
+      discountInPaise: Number(data.discount_in_paise),
       taxInPaise: Number(data.tax_in_paise),
       totalInPaise: Number(data.total_in_paise),
       paidInPaise,
       balanceInPaise: Math.max(0, Number(data.total_in_paise) - paidInPaise),
       notes: data.notes,
+      terms: data.terms,
+      saleMode: data.sale_mode,
+      taxType: data.tax_type,
+      shippingAddress: data.shipping_address,
       customer: {
         name: data.customer_name,
         email: data.customer_email,
@@ -288,5 +312,22 @@ export async function getBillingReport() {
     salesInPaise: invoices.filter((row) => row.status !== "CANCELLED").reduce((sum, row) => sum + Number(row.total_in_paise), 0),
     taxInPaise: invoices.filter((row) => row.status !== "CANCELLED").reduce((sum, row) => sum + Number(row.tax_in_paise), 0),
     paymentsInPaise: (paymentResult.data ?? []).reduce((sum, row) => sum + Number(row.amount_in_paise), 0),
+  };
+}
+
+export async function getBillingInventory() {
+  const business = await getBillingBusiness();
+  if (!business) return { business: null, products: [], movements: [] };
+  const supabase = await createBillingDataClient();
+  const [productResult, movementResult] = await Promise.all([
+    supabase.from("billing_products").select("id,name,sku,category,unit,purchase_price_in_paise,stock_quantity,low_stock_threshold,status").eq("business_id", business.id).order("name"),
+    supabase.from("billing_stock_movements").select("id,movement_type,quantity_change,quantity_after,reference_number,notes,created_at,billing_products(name,sku,unit)").eq("business_id", business.id).order("created_at", { ascending: false }).limit(250),
+  ]);
+  if (productResult.error) throw new Error(`Supabase query failed: ${productResult.error.message}`);
+  if (movementResult.error) throw new Error(`Supabase query failed: ${movementResult.error.message}`);
+  return {
+    business,
+    products: (productResult.data ?? []).map((row) => ({ id: row.id, name: row.name, sku: row.sku, category: row.category, unit: row.unit, purchasePriceInPaise: Number(row.purchase_price_in_paise), stockQuantity: Number(row.stock_quantity), lowStockThreshold: row.low_stock_threshold === null ? business.lowStockThreshold : Number(row.low_stock_threshold), status: row.status })),
+    movements: (movementResult.data ?? []).map((row) => { const product = one(row.billing_products); return { id: row.id, movementType: row.movement_type, quantityChange: Number(row.quantity_change), quantityAfter: Number(row.quantity_after), reference: row.reference_number, notes: row.notes, createdAt: row.created_at, productName: product?.name ?? "Unknown product", sku: product?.sku ?? "—", unit: product?.unit ?? "unit" }; }),
   };
 }

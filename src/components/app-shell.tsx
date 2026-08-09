@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState, type ReactNode } from "react";
-import { Boxes, Building2, CircleDollarSign, FileBarChart, FileText, KeyRound, LayoutDashboard, LogOut, Menu, MonitorSmartphone, Package, ReceiptIndianRupee, Settings, Users, WalletCards, X } from "lucide-react";
+import { Boxes, Building2, CircleDollarSign, FileBarChart, FileText, KeyRound, LayoutDashboard, LogOut, Menu, MonitorSmartphone, Package, ReceiptIndianRupee, ScanBarcode, Settings, Users, WalletCards, Warehouse, X } from "lucide-react";
 import { logout } from "@/app/login/actions";
 import { GlobalSearch } from "@/components/global-search";
 import { NavigationFeedback } from "@/components/navigation-feedback";
@@ -22,8 +22,10 @@ const adminNav: NavItem[] = [
 
 const billingNav: NavItem[] = [
   { label: "Dashboard", href: "/billing/dashboard", icon: LayoutDashboard },
+  { label: "Quick POS", href: "/billing/pos", icon: ScanBarcode },
   { label: "Customers", href: "/billing/customers", icon: Users },
   { label: "Products", href: "/billing/products", icon: Package },
+  { label: "Inventory", href: "/billing/inventory", icon: Warehouse },
   { label: "Invoices", href: "/billing/invoices", icon: FileText },
   { label: "Payments", href: "/billing/payments", icon: CircleDollarSign },
   { label: "Reports", href: "/billing/reports", icon: FileBarChart },

@@ -92,11 +92,18 @@ function registerIpc() {
   expose("billing:save-customer", (input) => database.saveCustomer(input));
   expose("billing:delete-customer", (input) => database.deleteCustomer(input.id));
   expose("billing:products", () => database.listProducts());
+  expose("billing:generate-sku", () => database.generateSku());
   expose("billing:save-product", (input) => database.saveProduct(input));
   expose("billing:delete-product", (input) => database.deleteProduct(input.id));
+  expose("billing:inventory", () => database.inventory());
+  expose("billing:adjust-stock", (input) => database.adjustStock(input));
   expose("billing:invoices", () => database.listInvoices());
   expose("billing:invoice", (input) => database.getInvoice(input.id));
   expose("billing:create-invoice", (input) => database.createInvoice(input));
+  expose("billing:create-pos-sale", (input) => database.createPosSale(input));
+  expose("billing:held-bills", () => database.listHeldBills());
+  expose("billing:hold-bill", (input) => database.holdBill(input));
+  expose("billing:delete-held-bill", (input) => database.deleteHeldBill(input.id));
   expose("billing:payments", () => database.listPayments());
   expose("billing:record-payment", (input) => database.recordPayment(input));
   expose("billing:settings", () => database.getBusiness());
@@ -105,13 +112,8 @@ function registerIpc() {
 
   expose("cloud:status", async () => {
     const record = licenses.requireActive();
-    try {
-      const result = await cloud.pullBackup(record.token);
-      return { available: true, metadata: result.metadata };
-    } catch (error) {
-      if (String(error.message).includes("No cloud backup")) return { available: false };
-      throw error;
-    }
+    const result = await cloud.listBackups(record.token);
+    return { available: result.backups.length > 0, metadata: result.backups[0] || null, backups: result.backups };
   });
   expose("cloud:backup", async () => {
     const record = licenses.requireActive();
@@ -120,9 +122,9 @@ function registerIpc() {
     const counts = database.counts();
     return cloud.pushBackup(record.token, { envelope, counts, deviceName: getDeviceIdentity().deviceName, appVersion: app.getVersion() });
   });
-  expose("cloud:restore", async () => {
+  expose("cloud:restore", async (input) => {
     const record = licenses.requireActive();
-    const result = await cloud.pullBackup(record.token);
+    const result = await cloud.pullBackup(record.token, input.id);
     const snapshot = licenses.decryptSnapshot(result.envelope);
     const backupDirectory = path.join(app.getPath("userData"), "backups");
     fs.mkdirSync(backupDirectory, { recursive: true });

@@ -6,11 +6,13 @@
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
   <title>AV Smartbilling</title>
   <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="parity.css">
 </head>
 <body>
-  <div id="app"><div class="splash"><div class="brand-mark">₹</div><p>AV Smartbilling</p><span class="spinner"></span></div></div>
+  <div id="app"><div class="splash"><div class="brand-mark"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 2v20l2-1 2 1 2-1 2 1 2-1 2 1 2-1 2 1V2l-2 1-2-1-2 1-2-1-2 1-2-1-2 1Z"/><path d="M8 7h8M8 11h8M13 15h3"/><path d="M8 15h1"/></svg></div><p>AV Smartbilling</p><span class="spinner"></span></div></div>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
   <dialog id="confirm-dialog" class="dialog"><form method="dialog"><p class="eyebrow">Confirm action</p><h2 id="confirm-title">Are you sure?</h2><p id="confirm-message" class="muted"></p><div class="dialog-actions"><button value="cancel" class="button secondary">Cancel</button><button value="confirm" class="button danger">Confirm</button></div></form></dialog>
+  <script src="icons.js" defer></script>
   <script src="app.js" defer></script>
 </body>
 </html>

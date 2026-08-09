@@ -15,8 +15,11 @@ Configurable billing and license-management platform with a browser Control Cent
 - Cryptographically secure license-key generation/hash utilities
 - Zod request schemas ready for Route Handlers
 - Electron Billing Desk with local SQLite as its working database
+- Barcode-first Quick POS with keyboard shortcuts, held bills, cash/UPI/card/credit checkout, and automatic local stock deduction
+- Product categories, barcode, purchase/selling price, HSN/SAC, per-product stock thresholds, and immutable inventory movements
+- Professional GST invoices with discounts, CGST/SGST/IGST, A4 output, and configurable 58mm/80mm thermal receipts
 - OS-protected license grant storage and offline signature verification
-- Explicit encrypted cloud backup and restore for computer migration
+- Explicit encrypted, versioned cloud backup and restore for computer migration
 
 Supabase Auth, live administration CRUD, browser-phase billing CRUD, license issuance, activation, validation, suspension, revocation, and device-slot reset are connected.
 
@@ -67,7 +70,7 @@ Use `AVSB_APP_URL` only when deliberately building for a different HTTPS deploym
 AVSB_APP_URL="https://another-deployment.example" npm run desktop:dist:win
 ```
 
-The NSIS installer is written to `release/AV-Smartbilling-Setup-0.2.0.exe`. For a trusted customer release, configure a Windows code-signing certificate through electron-builder's `CSC_LINK` and `CSC_KEY_PASSWORD` environment variables before packaging.
+The NSIS installer is written to `release/AV-Smartbilling-Setup-0.3.0.exe`. For a trusted customer release, configure a Windows code-signing certificate through electron-builder's `CSC_LINK` and `CSC_KEY_PASSWORD` environment variables before packaging.
 
 To create both Apple Silicon and Intel macOS installers:
 
@@ -75,7 +78,7 @@ To create both Apple Silicon and Intel macOS installers:
 npm run desktop:dist:mac
 ```
 
-The DMG files are written to `release/AV-Smartbilling-0.2.0-arm64.dmg` and `release/AV-Smartbilling-0.2.0-x64.dmg`. Public distribution should use an Apple Developer ID certificate and notarization; unsigned local builds may be blocked by Gatekeeper.
+The DMG files are written to `release/AV-Smartbilling-0.3.0-arm64.dmg` and `release/AV-Smartbilling-0.3.0-x64.dmg`. Public distribution should use an Apple Developer ID certificate and notarization; unsigned local builds may be blocked by Gatekeeper.
 
 Normal desktop billing is offline. Internet is used only for initial activation, periodic license validation, explicit encrypted cloud backup/restore, and future updates. Automatic updates and clean-machine installer testing remain subsequent milestones.
 
@@ -106,8 +109,9 @@ Manual smoke test:
 6. Apply `supabase/migrations/202608080004_license_lifecycle_functions.sql`.
 7. Apply `supabase/migrations/202608080005_licensed_billing_sessions.sql`.
 8. Apply `supabase/migrations/202608080006_desktop_cloud_backups.sql`.
-9. Create the first Auth user, then insert its UUID in `public.profiles` with the `OWNER` role.
-10. Sign in and open `/billing/settings` to create the first browser billing workspace if it is still needed.
+9. Apply `supabase/migrations/202608090001_pos_inventory_and_backup_history.sql`.
+10. Create the first Auth user, then insert its UUID in `public.profiles` with the `OWNER` role.
+11. Sign in and open `/billing/settings` to create the first browser billing workspace if it is still needed.
 
 `SUPABASE_SERVICE_ROLE_KEY` and `LICENSE_SIGNING_PRIVATE_KEY` are server-only. Never expose them with a `NEXT_PUBLIC_` prefix or ship them in a browser/Electron bundle.
 
