@@ -3,7 +3,7 @@ import "server-only";
 import { createHash } from "node:crypto";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { hashLicenseKey } from "@/lib/license-key";
-import { signLicenseGrant, type LicenseGrant } from "@/lib/license-signing";
+import { signLicenseGrant, type LicenseClient, type LicenseGrant } from "@/lib/license-signing";
 
 export class LicenseLifecycleError extends Error {
   constructor(message: string, public readonly status = 400) {
@@ -49,7 +49,7 @@ async function recordRejectedActivation(keyHash: string, message: string, ipAddr
   await supabase.from("license_activations").insert({ license_id: license.data.id, event: "REJECTED", success: false, failure_code: message.slice(0, 120).toUpperCase().replaceAll(/[^A-Z0-9]+/g, "_"), ip_address: ipAddress, user_agent: userAgent });
 }
 
-export async function activateLicense(input: { licenseKey: string; deviceFingerprint: string; deviceName: string; ipAddress: string | null; userAgent: string | null }) {
+export async function activateLicense(input: { licenseKey: string; deviceFingerprint: string; deviceName: string; client: LicenseClient; ipAddress: string | null; userAgent: string | null }) {
   const supabase = createAdminClient();
   const keyHash = hashLicenseKey(input.licenseKey);
   await supabase.from("licenses").update({ status: "EXPIRED" }).eq("license_key_hash", keyHash).eq("status", "ACTIVE").lte("expires_at", new Date().toISOString());
@@ -68,10 +68,10 @@ export async function activateLicense(input: { licenseKey: string; deviceFingerp
   }
   const licenseGrant = grant(data[0] as Record<string, unknown>);
   await ensureLicensedBillingWorkspace(supabase, licenseGrant);
-  return { grant: licenseGrant, signed: await signLicenseGrant(licenseGrant) };
+  return { grant: licenseGrant, signed: await signLicenseGrant(licenseGrant, input.client) };
 }
 
-export async function validateActivatedLicense(input: { deviceId: string; deviceFingerprint: string; ipAddress: string | null; userAgent: string | null }) {
+export async function validateActivatedLicense(input: { deviceId: string; deviceFingerprint: string; client: LicenseClient; ipAddress: string | null; userAgent: string | null }) {
   const supabase = createAdminClient();
   const device = await supabase.from("devices").select("license_id").eq("id", input.deviceId).maybeSingle();
   if (device.data) await supabase.from("licenses").update({ status: "EXPIRED" }).eq("id", device.data.license_id).eq("status", "ACTIVE").lte("expires_at", new Date().toISOString());
@@ -84,5 +84,5 @@ export async function validateActivatedLicense(input: { deviceId: string; device
   if (error || !data?.[0]) throw new LicenseLifecycleError(error?.message ?? "License validation failed", 409);
   const licenseGrant = grant(data[0] as Record<string, unknown>);
   await ensureLicensedBillingWorkspace(supabase, licenseGrant);
-  return { grant: licenseGrant, signed: await signLicenseGrant(licenseGrant) };
+  return { grant: licenseGrant, signed: await signLicenseGrant(licenseGrant, input.client) };
 }

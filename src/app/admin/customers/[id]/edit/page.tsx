@@ -7,5 +7,5 @@ export default async function EditCustomerPage({ params }: PageProps<"/admin/cus
   const { id } = await params;
   const customer = await getAdminCustomer(id);
   if (!customer) notFound();
-  return <div className="mx-auto max-w-4xl space-y-7"><PageHeader backHref={`/admin/customers/${id}`} eyebrow="Management" title="Edit customer" description="Update this Supabase customer record." /><CustomerForm customer={customer} /></div>;
+  return <div className="space-y-7"><PageHeader backHref={`/admin/customers/${id}`} eyebrow="Management" title="Edit customer" description="Update this Supabase customer record." /><CustomerForm customer={customer} /></div>;
 }

@@ -82,6 +82,10 @@ The DMG files are written to `release/AV-Smartbilling-0.3.0-arm64.dmg` and `rele
 
 Normal desktop billing is offline. Internet is used only for initial activation, periodic license validation, explicit encrypted cloud backup/restore, and future updates. Automatic updates and clean-machine installer testing remain subsequent milestones.
 
+## Mobile development
+
+The Android-first Flutter application lives in [`mobile`](./mobile). Its first milestone uses local SQLite for products, customers, invoices and stock, with internet required only for license activation and periodic validation. Camera barcode scanning and PDF/WhatsApp sharing are included. See [`mobile/README.md`](./mobile/README.md) for setup and scope.
+
 ## Verification
 
 ```bash

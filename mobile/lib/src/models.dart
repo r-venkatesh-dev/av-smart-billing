@@ -1,0 +1,161 @@
+class LicenseSession {
+  const LicenseSession({
+    required this.token,
+    required this.publicKey,
+    required this.issuer,
+    required this.deviceId,
+    required this.customerName,
+    required this.planName,
+    required this.expiresAt,
+    required this.validUntil,
+  });
+
+  final String token;
+  final String publicKey;
+  final String issuer;
+  final String deviceId;
+  final String customerName;
+  final String planName;
+  final DateTime expiresAt;
+  final DateTime validUntil;
+
+  bool get isActive => DateTime.now().isBefore(validUntil);
+  Map<String, Object?> toJson() => {
+    'token': token,
+    'publicKey': publicKey,
+    'issuer': issuer,
+    'deviceId': deviceId,
+    'customerName': customerName,
+    'planName': planName,
+    'expiresAt': expiresAt.toIso8601String(),
+    'validUntil': validUntil.toIso8601String(),
+  };
+  factory LicenseSession.fromJson(Map<String, dynamic> json) => LicenseSession(
+    token: json['token'] as String,
+    publicKey: json['publicKey'] as String,
+    issuer: json['issuer'] as String,
+    deviceId: json['deviceId'] as String,
+    customerName: json['customerName'] as String,
+    planName: json['planName'] as String,
+    expiresAt: DateTime.parse(json['expiresAt'] as String),
+    validUntil: DateTime.parse(json['validUntil'] as String),
+  );
+}
+
+class Product {
+  const Product({
+    required this.id,
+    required this.name,
+    required this.sku,
+    required this.barcode,
+    required this.unit,
+    required this.priceInPaise,
+    required this.taxRateBasisPoints,
+    required this.stockQuantity,
+    required this.active,
+  });
+  final String id;
+  final String name;
+  final String sku;
+  final String barcode;
+  final String unit;
+  final int priceInPaise;
+  final int taxRateBasisPoints;
+  final double stockQuantity;
+  final bool active;
+  factory Product.fromMap(Map<String, Object?> row) => Product(
+    id: row['id'] as String,
+    name: row['name'] as String,
+    sku: row['sku'] as String,
+    barcode: (row['barcode'] as String?) ?? '',
+    unit: row['unit'] as String,
+    priceInPaise: row['price_in_paise'] as int,
+    taxRateBasisPoints: row['tax_rate_basis_points'] as int,
+    stockQuantity: (row['stock_quantity'] as num).toDouble(),
+    active: row['active'] == 1,
+  );
+}
+
+class Customer {
+  const Customer({
+    required this.id,
+    required this.name,
+    required this.phone,
+    required this.address,
+    required this.gstin,
+  });
+  final String id;
+  final String name;
+  final String phone;
+  final String address;
+  final String gstin;
+  factory Customer.fromMap(Map<String, Object?> row) => Customer(
+    id: row['id'] as String,
+    name: row['name'] as String,
+    phone: row['phone'] as String,
+    address: row['address'] as String,
+    gstin: (row['gstin'] as String?) ?? '',
+  );
+}
+
+class CartLine {
+  CartLine({
+    required this.product,
+    this.quantity = 1,
+    this.discountPercent = 0,
+  });
+  final Product product;
+  double quantity;
+  double discountPercent;
+}
+
+class InvoiceSummary {
+  const InvoiceSummary({
+    required this.id,
+    required this.invoiceNumber,
+    required this.customerName,
+    required this.issuedAt,
+    required this.totalInPaise,
+    required this.status,
+  });
+  final String id;
+  final String invoiceNumber;
+  final String customerName;
+  final DateTime issuedAt;
+  final int totalInPaise;
+  final String status;
+  factory InvoiceSummary.fromMap(Map<String, Object?> row) => InvoiceSummary(
+    id: row['id'] as String,
+    invoiceNumber: row['invoice_number'] as String,
+    customerName: row['customer_name'] as String,
+    issuedAt: DateTime.parse(row['issued_at'] as String),
+    totalInPaise: row['total_in_paise'] as int,
+    status: row['status'] as String,
+  );
+}
+
+class InvoiceDetail {
+  const InvoiceDetail({
+    required this.invoice,
+    required this.items,
+    required this.business,
+  });
+  final Map<String, Object?> invoice;
+  final List<Map<String, Object?>> items;
+  final Map<String, Object?> business;
+}
+
+class DashboardStats {
+  const DashboardStats({
+    required this.todaySales,
+    required this.totalSales,
+    required this.invoiceCount,
+    required this.productCount,
+    required this.lowStockCount,
+  });
+  final int todaySales;
+  final int totalSales;
+  final int invoiceCount;
+  final int productCount;
+  final int lowStockCount;
+}

@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 const deviceFingerprint = z.string().trim().min(32).max(512);
+const licenseClient = z.enum(["DESKTOP", "MOBILE"]).default("DESKTOP");
 
 export const generateLicenseSchema = z.object({
   customerId: z.uuid(),
@@ -13,11 +14,13 @@ export const activateLicenseSchema = z.object({
   licenseKey: z.string().trim().regex(/^[A-Z0-9]{4}(?:-[A-Z0-9]{4}){3}$/),
   deviceFingerprint,
   deviceName: z.string().trim().min(1).max(120),
+  client: licenseClient,
 });
 
 export const validateLicenseSchema = z.object({
   deviceId: z.uuid(),
   deviceFingerprint,
+  client: licenseClient,
 });
 
 export const licenseActionSchema = z.object({ licenseId: z.uuid() });

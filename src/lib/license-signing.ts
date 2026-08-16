@@ -14,12 +14,18 @@ export interface LicenseGrant {
   maxDevices: number;
 }
 
+export type LicenseClient = "DESKTOP" | "MOBILE";
+
+function audienceFor(client: LicenseClient) {
+  return client === "MOBILE" ? "av-smartbilling-mobile" : "av-smartbilling-desktop";
+}
+
 function privateKey() {
   const der = Buffer.from(getServerEnv().LICENSE_SIGNING_PRIVATE_KEY, "base64url");
   return createPrivateKey({ key: der, type: "pkcs8", format: "der" });
 }
 
-export async function signLicenseGrant(grant: LicenseGrant) {
+export async function signLicenseGrant(grant: LicenseGrant, client: LicenseClient = "DESKTOP") {
   const env = getServerEnv();
   const key = privateKey();
   const now = Date.now();
@@ -37,7 +43,7 @@ export async function signLicenseGrant(grant: LicenseGrant) {
   })
     .setProtectedHeader({ alg: "EdDSA", kid: env.LICENSE_SIGNING_KEY_ID, typ: "JWT" })
     .setIssuer(env.LICENSE_ISSUER)
-    .setAudience("av-smartbilling-desktop")
+    .setAudience(audienceFor(client))
     .setSubject(grant.licenseId)
     .setJti(crypto.randomUUID())
     .setIssuedAt()
