@@ -159,3 +159,81 @@ class DashboardStats {
   final int productCount;
   final int lowStockCount;
 }
+
+class CloudBackupRecord {
+  const CloudBackupRecord({
+    required this.localId,
+    required this.updatedAt,
+    required this.payload,
+  });
+
+  final String localId;
+  final DateTime updatedAt;
+  final Map<String, Object?> payload;
+
+  Map<String, Object?> toJson() => {
+    'localId': localId,
+    'updatedAt': updatedAt.toUtc().toIso8601String(),
+    'payload': payload,
+  };
+}
+
+class ReportInvoice {
+  const ReportInvoice({
+    required this.invoiceNumber,
+    required this.customerName,
+    required this.issuedAt,
+    required this.status,
+    required this.paymentMethod,
+    required this.subtotalInPaise,
+    required this.discountInPaise,
+    required this.taxInPaise,
+    required this.totalInPaise,
+  });
+
+  final String invoiceNumber;
+  final String customerName;
+  final DateTime issuedAt;
+  final String status;
+  final String paymentMethod;
+  final int subtotalInPaise;
+  final int discountInPaise;
+  final int taxInPaise;
+  final int totalInPaise;
+}
+
+class SalesReport {
+  const SalesReport({
+    required this.from,
+    required this.to,
+    required this.invoices,
+  });
+
+  final DateTime from;
+  final DateTime to;
+  final List<ReportInvoice> invoices;
+
+  int get invoiceCount => invoices.length;
+  int get totalSales => invoices.fold(0, (sum, row) => sum + row.totalInPaise);
+  int get totalTax => invoices.fold(0, (sum, row) => sum + row.taxInPaise);
+  int get totalDiscount =>
+      invoices.fold(0, (sum, row) => sum + row.discountInPaise);
+  int get collected => invoices
+      .where((row) => row.status == 'PAID')
+      .fold(0, (sum, row) => sum + row.totalInPaise);
+  int get outstanding => invoices
+      .where((row) => row.status != 'PAID')
+      .fold(0, (sum, row) => sum + row.totalInPaise);
+
+  Map<String, int> get paymentTotals {
+    final totals = <String, int>{};
+    for (final invoice in invoices) {
+      totals.update(
+        invoice.paymentMethod,
+        (value) => value + invoice.totalInPaise,
+        ifAbsent: () => invoice.totalInPaise,
+      );
+    }
+    return totals;
+  }
+}

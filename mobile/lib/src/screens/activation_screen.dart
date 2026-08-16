@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
 import '../app.dart';
+import '../input_rules.dart';
 import '../ui_helpers.dart';
 
 class ActivationScreen extends StatefulWidget {
@@ -52,22 +52,35 @@ class _ActivationScreenState extends State<ActivationScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Container(
-                  width: 64,
-                  height: 64,
-                  decoration: BoxDecoration(
-                    color: Theme.of(context).colorScheme.primary,
-                    borderRadius: BorderRadius.circular(18),
-                  ),
-                  child: const Icon(
-                    Icons.receipt_long,
-                    color: Colors.white,
-                    size: 32,
+                Align(
+                  child: Container(
+                    width: 92,
+                    height: 92,
+                    padding: const EdgeInsets.all(6),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(24),
+                      boxShadow: const [
+                        BoxShadow(
+                          color: Color(0x1f000000),
+                          blurRadius: 24,
+                          offset: Offset(0, 10),
+                        ),
+                      ],
+                    ),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(19),
+                      child: Image.asset(
+                        'assets/branding/av-smartbilling-icon-concept-3.png',
+                        fit: BoxFit.cover,
+                      ),
+                    ),
                   ),
                 ),
-                const SizedBox(height: 24),
+                const SizedBox(height: 22),
                 Text(
                   'AV Smartbilling',
+                  textAlign: TextAlign.center,
                   style: Theme.of(context).textTheme.headlineMedium?.copyWith(
                     fontWeight: FontWeight.w800,
                   ),
@@ -75,6 +88,7 @@ class _ActivationScreenState extends State<ActivationScreen> {
                 const SizedBox(height: 8),
                 Text(
                   'Offline billing for your shop',
+                  textAlign: TextAlign.center,
                   style: TextStyle(color: Colors.grey.shade600, fontSize: 16),
                 ),
                 const SizedBox(height: 32),
@@ -98,13 +112,10 @@ class _ActivationScreenState extends State<ActivationScreen> {
                           const SizedBox(height: 20),
                           TextFormField(
                             controller: _key,
-                            textCapitalization: TextCapitalization.characters,
                             autocorrect: false,
-                            inputFormatters: [
-                              FilteringTextInputFormatter.allow(
-                                RegExp('[A-Za-z0-9-]'),
-                              ),
-                            ],
+                            textCapitalization: TextCapitalization.characters,
+                            keyboardType: TextInputType.visiblePassword,
+                            inputFormatters: const [LicenseKeyInputFormatter()],
                             decoration: const InputDecoration(
                               labelText: 'License key',
                               hintText: 'ABCD-EFGH-JKLM-NPQR',

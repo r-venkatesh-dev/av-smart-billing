@@ -47,6 +47,10 @@ dependencies:
   intl: ^0.20.3
   cryptography: ^2.9.0
   device_info_plus: ^12.4.0
+  excel: ^4.0.6
+  local_auth: ^3.0.1
+  permission_handler: ^12.0.1
+  print_bluetooth_thermal: ^1.2.1
 
 dev_dependencies:
   flutter_test:
@@ -70,6 +74,9 @@ flutter:
   # included with your application, so that you can use the icons in
   # the material Icons class.
   uses-material-design: true
+
+  assets:
+    - assets/branding/av-smartbilling-icon-concept-3.png
 
   # To add assets to your application, add an assets section, like this:
   # assets:

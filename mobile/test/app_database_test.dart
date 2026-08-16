@@ -70,7 +70,44 @@ void main() {
     expect(invoice.invoice['total_in_paise'], 23600);
     expect(invoice.items.single['quantity'], 2.0);
     expect((await database.products()).single.stockQuantity, 3);
+
+    final report = await database.salesReport(
+      DateTime.now().subtract(const Duration(days: 1)),
+      DateTime.now().add(const Duration(days: 1)),
+    );
+    expect(report.invoiceCount, 1);
+    expect(report.totalSales, 23600);
+    expect(report.collected, 23600);
+    expect(report.paymentTotals['UPI'], 23600);
+
+    final productBackup = await database.cloudBackupRecords('products');
+    expect(productBackup.single.localId, product.id);
+    expect(productBackup.single.payload['stock_quantity'], 3.0);
+
+    final invoiceBackup = await database.cloudBackupRecords('invoices');
+    expect(invoiceBackup.single.localId, id);
+    expect(invoiceBackup.single.payload['items'], isA<List<Object?>>());
+    expect(
+      invoiceBackup.single.payload['items'] as List<Object?>,
+      hasLength(1),
+    );
   });
+
+  test(
+    'rejects customer mobile numbers that are not exactly 10 digits',
+    () async {
+      await expectLater(
+        database.saveCustomer(
+          name: 'Invalid Phone',
+          phone: '98765432101',
+          address: '',
+          gstin: '',
+        ),
+        throwsA(predicate((error) => error.toString().contains('10-digit'))),
+      );
+      expect(await database.customers(), isEmpty);
+    },
+  );
 
   test('rolls back invoice creation when stock is insufficient', () async {
     await database.saveProduct(

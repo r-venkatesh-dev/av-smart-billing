@@ -6,8 +6,13 @@ import '../ui_helpers.dart';
 import 'editor_dialogs.dart';
 
 class ProductsScreen extends StatefulWidget {
-  const ProductsScreen({super.key, required this.controller});
+  const ProductsScreen({
+    super.key,
+    required this.controller,
+    required this.drawer,
+  });
   final AppController controller;
+  final Widget drawer;
 
   @override
   State<ProductsScreen> createState() => _ProductsScreenState();
@@ -32,6 +37,7 @@ class _ProductsScreenState extends State<ProductsScreen> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
+    drawer: widget.drawer,
     appBar: AppBar(
       title: const Text('Products'),
       actions: [

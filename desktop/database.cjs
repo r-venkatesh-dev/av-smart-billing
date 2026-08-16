@@ -30,6 +30,13 @@ function requireText(value, label, min = 1, max = 180) {
   return result;
 }
 
+function mobileNumber(value, { required = false, label = "Mobile number" } = {}) {
+  const result = String(value ?? "").trim();
+  if (!result && !required) return "";
+  if (!/^\d{10}$/.test(result)) throw new Error(`${label} must contain exactly 10 digits.`);
+  return result;
+}
+
 function hasColumn(db, table, column) {
   return db.prepare(`pragma table_info(${table})`).all().some((row) => row.name === column);
 }
@@ -238,7 +245,7 @@ function createBillingDatabase(databasePath) {
       id,
       name: requireText(input.name, "Customer name", 2),
       email: optional(input.email, 180),
-      phone: clean(input.phone, 40),
+      phone: mobileNumber(input.phone),
       address: clean(input.address, 500),
       gstin: optional(input.gstin, 15)?.toUpperCase() ?? null,
       status: input.status === "INACTIVE" ? "INACTIVE" : "ACTIVE",
@@ -324,7 +331,7 @@ function createBillingDatabase(databasePath) {
     if (input.customerId) customer = db.prepare("select * from customers where id=? and status='ACTIVE'").get(input.customerId);
     if (input.customerId && !customer) throw new Error("Selected customer is unavailable.");
     const customerName = customer?.name || requireText(input.walkInName, "Walk-in customer name", 2);
-    const customerPhone = customer?.phone || requireText(input.walkInPhone, "Walk-in mobile number", 5, 40);
+    const customerPhone = customer?.phone || mobileNumber(input.walkInPhone, { required: true, label: "Walk-in mobile number" });
     const rows = Array.isArray(input.items) ? input.items : [];
     if (!rows.length) throw new Error("Add at least one product to the invoice.");
     const requested = new Map();
@@ -472,7 +479,7 @@ function createBillingDatabase(databasePath) {
     if (!/^[A-Z0-9-]+$/.test(prefix)) throw new Error("Invoice prefix can contain only letters, numbers and hyphens.");
     const paperWidth = Number(input.thermalPaperWidth) === 58 ? 58 : 80;
     db.prepare(`update business set company_name=?,contact_person=?,email=?,phone=?,address=?,gstin=?,state_code=?,currency_code='INR',invoice_prefix=?,low_stock_threshold=?,invoice_footer=?,invoice_terms=?,thermal_paper_width=?,updated_at=? where id='local-business'`).run(
-      requireText(input.companyName, "Business name", 2), clean(input.contactPerson, 120), optional(input.email, 180), clean(input.phone, 40), clean(input.address, 500), optional(input.gstin, 15)?.toUpperCase() ?? null, clean(input.stateCode, 2), prefix, Math.max(0, number(input.lowStockThreshold, 5)), clean(input.invoiceFooter, 500), clean(input.invoiceTerms, 1500), paperWidth, now(),
+      requireText(input.companyName, "Business name", 2), clean(input.contactPerson, 120), optional(input.email, 180), mobileNumber(input.phone), clean(input.address, 500), optional(input.gstin, 15)?.toUpperCase() ?? null, clean(input.stateCode, 2), prefix, Math.max(0, number(input.lowStockThreshold, 5)), clean(input.invoiceFooter, 500), clean(input.invoiceTerms, 1500), paperWidth, now(),
     );
     return { message: "Business settings saved locally." };
   }

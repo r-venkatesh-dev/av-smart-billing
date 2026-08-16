@@ -5,10 +5,16 @@ import '../app.dart';
 import '../invoice_pdf.dart';
 import '../models.dart';
 import '../ui_helpers.dart';
+import 'thermal_print_sheet.dart';
 
 class InvoicesScreen extends StatefulWidget {
-  const InvoicesScreen({super.key, required this.controller});
+  const InvoicesScreen({
+    super.key,
+    required this.controller,
+    required this.drawer,
+  });
   final AppController controller;
+  final Widget drawer;
 
   @override
   State<InvoicesScreen> createState() => _InvoicesScreenState();
@@ -31,6 +37,7 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
+    drawer: widget.drawer,
     appBar: AppBar(title: const Text('Invoices')),
     body: FutureBuilder<List<InvoiceSummary>>(
       future: invoices,
@@ -290,7 +297,21 @@ class _InvoiceDetailScreenState extends State<InvoiceDetailScreen> {
             OutlinedButton.icon(
               onPressed: () => printInvoice(detail),
               icon: const Icon(Icons.print),
-              label: const Text('Print using phone'),
+              label: const Text('Print A4 using phone'),
+              style: OutlinedButton.styleFrom(
+                minimumSize: const Size.fromHeight(50),
+              ),
+            ),
+            const SizedBox(height: 10),
+            OutlinedButton.icon(
+              onPressed: () => showModalBottomSheet<void>(
+                context: context,
+                isScrollControlled: true,
+                showDragHandle: true,
+                builder: (_) => ThermalPrintSheet(invoice: detail),
+              ),
+              icon: const Icon(Icons.bluetooth),
+              label: const Text('Bluetooth thermal print'),
               style: OutlinedButton.styleFrom(
                 minimumSize: const Size.fromHeight(50),
               ),

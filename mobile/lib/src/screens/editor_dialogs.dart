@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-
 import '../billing_math.dart';
+import '../input_rules.dart';
 import '../models.dart';
 import '../ui_helpers.dart';
 import 'barcode_scanner_screen.dart';
@@ -297,7 +297,9 @@ class _CustomerEditorDialogState extends State<CustomerEditorDialog> {
               TextFormField(
                 controller: phone,
                 keyboardType: TextInputType.phone,
+                inputFormatters: mobileNumberInputFormatters,
                 decoration: const InputDecoration(labelText: 'Mobile number'),
+                validator: validateOptionalMobileNumber,
               ),
               const SizedBox(height: 12),
               TextFormField(
@@ -384,6 +386,10 @@ class _BusinessEditorDialogState extends State<BusinessEditorDialog> {
         error: true,
       );
     }
+    final phoneError = validateOptionalMobileNumber(fields['phone']!.text);
+    if (phoneError != null) {
+      return showMessage(context, phoneError, error: true);
+    }
     setState(() => saving = true);
     try {
       await widget.onSave({
@@ -451,6 +457,7 @@ class _BusinessEditorDialogState extends State<BusinessEditorDialog> {
   }) => TextField(
     controller: fields[key],
     keyboardType: type,
+    inputFormatters: key == 'phone' ? mobileNumberInputFormatters : null,
     textCapitalization: capitals
         ? TextCapitalization.characters
         : TextCapitalization.none,
@@ -481,6 +488,7 @@ class CheckoutSheet extends StatefulWidget {
 }
 
 class _CheckoutSheetState extends State<CheckoutSheet> {
+  final form = GlobalKey<FormState>();
   final name = TextEditingController(text: 'Walk-in Customer');
   final phone = TextEditingController();
   Customer? selected;
@@ -508,6 +516,7 @@ class _CheckoutSheetState extends State<CheckoutSheet> {
 
   Future<void> _save() async {
     if (widget.cart.isEmpty) return;
+    if (!form.currentState!.validate()) return;
     setState(() => saving = true);
     try {
       final id = await widget.onSave(selected, name.text, phone.text, payment);
@@ -525,138 +534,147 @@ class _CheckoutSheetState extends State<CheckoutSheet> {
     final inset = MediaQuery.viewInsetsOf(context).bottom;
     return Padding(
       padding: EdgeInsets.fromLTRB(20, 0, 20, 20 + inset),
-      child: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text(
-              'Complete bill',
-              style: Theme.of(
-                context,
-              ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 14),
-            ...widget.cart.asMap().entries.map((entry) {
-              final line = entry.value;
-              return ListTile(
-                contentPadding: EdgeInsets.zero,
-                title: Text(line.product.name),
-                subtitle: Text(
-                  '${money(line.product.priceInPaise)} × ${line.quantity}',
-                ),
-                trailing: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    IconButton(
-                      onPressed: saving
-                          ? null
-                          : () => setState(() {
-                              if (line.quantity <= 1) {
-                                widget.cart.removeAt(entry.key);
-                              } else {
-                                line.quantity--;
-                              }
-                            }),
-                      icon: const Icon(Icons.remove_circle_outline),
-                    ),
-                    Text('${line.quantity}'),
-                    IconButton(
-                      onPressed:
-                          saving || line.quantity >= line.product.stockQuantity
-                          ? null
-                          : () => setState(() => line.quantity++),
-                      icon: const Icon(Icons.add_circle_outline),
-                    ),
-                  ],
-                ),
-              );
-            }),
-            const Divider(),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Text(
-                  'Grand total',
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
-                ),
-                Text(
-                  money(total),
-                  style: TextStyle(
-                    fontWeight: FontWeight.w800,
-                    fontSize: 22,
-                    color: Theme.of(context).colorScheme.primary,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 18),
-            DropdownButtonFormField<Customer?>(
-              initialValue: selected,
-              decoration: const InputDecoration(labelText: 'Customer'),
-              items: [
-                const DropdownMenuItem(
-                  value: null,
-                  child: Text('Walk-in customer'),
-                ),
-                ...widget.customers.map(
-                  (customer) => DropdownMenuItem(
-                    value: customer,
-                    child: Text(customer.name),
-                  ),
-                ),
-              ],
-              onChanged: saving
-                  ? null
-                  : (value) => setState(() => selected = value),
-            ),
-            if (selected == null) ...[
-              const SizedBox(height: 12),
-              TextField(
-                controller: name,
-                enabled: !saving,
-                decoration: const InputDecoration(labelText: 'Customer name'),
+      child: Form(
+        key: form,
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                'Complete bill',
+                style: Theme.of(
+                  context,
+                ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
               ),
+              const SizedBox(height: 14),
+              ...widget.cart.asMap().entries.map((entry) {
+                final line = entry.value;
+                return ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: Text(line.product.name),
+                  subtitle: Text(
+                    '${money(line.product.priceInPaise)} × ${line.quantity}',
+                  ),
+                  trailing: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      IconButton(
+                        onPressed: saving
+                            ? null
+                            : () => setState(() {
+                                if (line.quantity <= 1) {
+                                  widget.cart.removeAt(entry.key);
+                                } else {
+                                  line.quantity--;
+                                }
+                              }),
+                        icon: const Icon(Icons.remove_circle_outline),
+                      ),
+                      Text('${line.quantity}'),
+                      IconButton(
+                        onPressed:
+                            saving ||
+                                line.quantity >= line.product.stockQuantity
+                            ? null
+                            : () => setState(() => line.quantity++),
+                        icon: const Icon(Icons.add_circle_outline),
+                      ),
+                    ],
+                  ),
+                );
+              }),
+              const Divider(),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text(
+                    'Grand total',
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+                  ),
+                  Text(
+                    money(total),
+                    style: TextStyle(
+                      fontWeight: FontWeight.w800,
+                      fontSize: 22,
+                      color: Theme.of(context).colorScheme.primary,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 18),
+              DropdownButtonFormField<Customer?>(
+                initialValue: selected,
+                decoration: const InputDecoration(labelText: 'Customer'),
+                items: [
+                  const DropdownMenuItem(
+                    value: null,
+                    child: Text('Walk-in customer'),
+                  ),
+                  ...widget.customers.map(
+                    (customer) => DropdownMenuItem(
+                      value: customer,
+                      child: Text(customer.name),
+                    ),
+                  ),
+                ],
+                onChanged: saving
+                    ? null
+                    : (value) => setState(() => selected = value),
+              ),
+              if (selected == null) ...[
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: name,
+                  enabled: !saving,
+                  decoration: const InputDecoration(labelText: 'Customer name'),
+                  validator: (value) => (value ?? '').trim().length < 2
+                      ? 'Enter the customer name.'
+                      : null,
+                ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: phone,
+                  enabled: !saving,
+                  keyboardType: TextInputType.phone,
+                  inputFormatters: mobileNumberInputFormatters,
+                  decoration: const InputDecoration(labelText: 'Mobile number'),
+                  validator: validateOptionalMobileNumber,
+                ),
+              ],
               const SizedBox(height: 12),
-              TextField(
-                controller: phone,
-                enabled: !saving,
-                keyboardType: TextInputType.phone,
-                decoration: const InputDecoration(labelText: 'Mobile number'),
+              DropdownButtonFormField<String>(
+                initialValue: payment,
+                decoration: const InputDecoration(labelText: 'Payment method'),
+                items: const [
+                  DropdownMenuItem(value: 'CASH', child: Text('Cash')),
+                  DropdownMenuItem(value: 'UPI', child: Text('UPI')),
+                  DropdownMenuItem(value: 'CARD', child: Text('Card')),
+                  DropdownMenuItem(
+                    value: 'CREDIT',
+                    child: Text('Credit / Pay later'),
+                  ),
+                ],
+                onChanged: saving
+                    ? null
+                    : (value) => setState(() => payment = value!),
+              ),
+              const SizedBox(height: 18),
+              FilledButton.icon(
+                onPressed: saving || widget.cart.isEmpty ? null : _save,
+                icon: saving
+                    ? const SizedBox.square(
+                        dimension: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.check_circle),
+                label: Text(saving ? 'Saving bill…' : 'Complete sale'),
+                style: FilledButton.styleFrom(
+                  minimumSize: const Size.fromHeight(52),
+                ),
               ),
             ],
-            const SizedBox(height: 12),
-            DropdownButtonFormField<String>(
-              initialValue: payment,
-              decoration: const InputDecoration(labelText: 'Payment method'),
-              items: const [
-                DropdownMenuItem(value: 'CASH', child: Text('Cash')),
-                DropdownMenuItem(value: 'UPI', child: Text('UPI')),
-                DropdownMenuItem(value: 'CARD', child: Text('Card')),
-                DropdownMenuItem(
-                  value: 'CREDIT',
-                  child: Text('Credit / Pay later'),
-                ),
-              ],
-              onChanged: saving
-                  ? null
-                  : (value) => setState(() => payment = value!),
-            ),
-            const SizedBox(height: 18),
-            FilledButton.icon(
-              onPressed: saving || widget.cart.isEmpty ? null : _save,
-              icon: saving
-                  ? const SizedBox.square(
-                      dimension: 18,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Icon(Icons.check_circle),
-              label: Text(saving ? 'Saving bill…' : 'Complete sale'),
-              style: FilledButton.styleFrom(
-                minimumSize: const Size.fromHeight(52),
-              ),
-            ),
-          ],
+          ),
         ),
       ),
     );

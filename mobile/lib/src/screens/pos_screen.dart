@@ -9,14 +9,15 @@ import 'editor_dialogs.dart';
 import 'invoices_screen.dart';
 
 class PosScreen extends StatefulWidget {
-  const PosScreen({super.key, required this.controller});
+  const PosScreen({super.key, required this.controller, required this.drawer});
   final AppController controller;
+  final Widget drawer;
 
   @override
-  State<PosScreen> createState() => _PosScreenState();
+  State<PosScreen> createState() => PosScreenState();
 }
 
-class _PosScreenState extends State<PosScreen> {
+class PosScreenState extends State<PosScreen> {
   List<Product> products = [];
   final List<CartLine> cart = [];
   String query = '';
@@ -93,7 +94,7 @@ class _PosScreenState extends State<PosScreen> {
         ).total,
   );
 
-  Future<void> _scan() async {
+  Future<void> startBarcodeScan() async {
     final value = await Navigator.push<String>(
       context,
       MaterialPageRoute(builder: (_) => const BarcodeScannerScreen()),
@@ -178,38 +179,18 @@ class _PosScreenState extends State<PosScreen> {
           product.barcode.contains(term);
     }).toList();
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Quick Sell'),
-        actions: [
-          IconButton(
-            onPressed: _scan,
-            icon: const Icon(Icons.qr_code_scanner),
-            tooltip: 'Scan barcode',
-          ),
-        ],
-      ),
+      drawer: widget.drawer,
+      appBar: AppBar(title: const Text('Quick Sell')),
       body: Column(
         children: [
           Padding(
             padding: const EdgeInsets.all(16),
-            child: Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    onChanged: (value) => setState(() => query = value),
-                    decoration: const InputDecoration(
-                      prefixIcon: Icon(Icons.search),
-                      hintText: 'Search or scan a product',
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                IconButton.filled(
-                  onPressed: _scan,
-                  icon: const Icon(Icons.qr_code_scanner),
-                  style: IconButton.styleFrom(minimumSize: const Size(56, 56)),
-                ),
-              ],
+            child: TextField(
+              onChanged: (value) => setState(() => query = value),
+              decoration: const InputDecoration(
+                prefixIcon: Icon(Icons.search),
+                hintText: 'Search products',
+              ),
             ),
           ),
           Expanded(

@@ -1,11 +1,12 @@
 import { z } from "zod";
+import { optionalMobileNumber, requiredMobileNumber } from "@/lib/validation/common";
 
 const optionalEmail = z.string().trim().refine((value) => !value || z.email().safeParse(value).success, "Enter a valid email or leave it blank.");
 const optionalGstin = z.string().trim().toUpperCase().refine((value) => !value || /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/.test(value), "Enter a valid GSTIN or leave it blank.");
 
 export const billingBusinessSchema = z.object({
   companyName: z.string().trim().min(2).max(180), contactPerson: z.string().trim().max(120), email: optionalEmail,
-  phone: z.string().trim().max(40), address: z.string().trim().max(500), gstin: optionalGstin,
+  phone: optionalMobileNumber, address: z.string().trim().max(500), gstin: optionalGstin,
   currencyCode: z.string().trim().toUpperCase().regex(/^[A-Z]{3}$/), invoicePrefix: z.string().trim().toUpperCase().regex(/^[A-Z0-9-]{1,12}$/),
   lowStockThreshold: z.coerce.number().min(0).max(100000000),
   stateCode: z.string().trim().refine((value) => !value || /^[0-9]{2}$/.test(value), "Enter a two-digit GST state code."),
@@ -13,7 +14,7 @@ export const billingBusinessSchema = z.object({
 });
 
 export const billingCustomerSchema = z.object({
-  name: z.string().trim().min(2).max(180), email: optionalEmail, phone: z.string().trim().max(40), address: z.string().trim().max(500), gstin: optionalGstin,
+  name: z.string().trim().min(2).max(180), email: optionalEmail, phone: optionalMobileNumber, address: z.string().trim().max(500), gstin: optionalGstin,
 });
 
 export const billingProductSchema = z.object({
@@ -27,12 +28,12 @@ export const billingProductSchema = z.object({
 });
 
 export const billingInvoiceSchema = z.object({
-  customerId: z.string().uuid().or(z.literal("WALK_IN")), walkInName: z.string().trim().max(180), walkInPhone: z.string().trim().max(40),
+  customerId: z.string().uuid().or(z.literal("WALK_IN")), walkInName: z.string().trim().max(180), walkInPhone: z.string().trim().max(10),
   productId: z.string().uuid(), quantity: z.coerce.number().positive().max(1000000), dueAt: z.string().trim(), notes: z.string().trim().max(1000),
 }).superRefine((value, context) => {
   if (value.customerId !== "WALK_IN") return;
   if (value.walkInName.length < 2) context.addIssue({ code: "custom", path: ["walkInName"], message: "Enter the walk-in customer's name." });
-  if (value.walkInPhone.length < 5) context.addIssue({ code: "custom", path: ["walkInPhone"], message: "Enter the walk-in customer's mobile number." });
+  if (!requiredMobileNumber.safeParse(value.walkInPhone).success) context.addIssue({ code: "custom", path: ["walkInPhone"], message: "Enter a valid 10-digit mobile number." });
 });
 
 export const billingPaymentSchema = z.object({
@@ -42,7 +43,7 @@ export const billingPaymentSchema = z.object({
 export const billingPosSchema = z.object({
   customerId: z.string().uuid().nullable(),
   walkInName: z.string().trim().max(180),
-  walkInPhone: z.string().trim().max(40),
+  walkInPhone: z.string().trim().max(10),
   items: z.array(z.object({
     productId: z.string().uuid(),
     quantity: z.coerce.number().positive().max(1000000),
@@ -55,7 +56,7 @@ export const billingPosSchema = z.object({
 }).superRefine((value, context) => {
   if (value.customerId) return;
   if (value.walkInName.length < 2) context.addIssue({ code: "custom", path: ["walkInName"], message: "Enter the walk-in customer's name." });
-  if (value.walkInPhone.length < 5) context.addIssue({ code: "custom", path: ["walkInPhone"], message: "Enter the walk-in customer's mobile number." });
+  if (!requiredMobileNumber.safeParse(value.walkInPhone).success) context.addIssue({ code: "custom", path: ["walkInPhone"], message: "Enter a valid 10-digit mobile number." });
 });
 
 export const billingStockAdjustmentSchema = z.object({

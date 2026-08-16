@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { requiredMobileNumber } from "@/lib/validation/common";
 
 const optionalGstin = z.string().trim().toUpperCase().refine(
   (value) => !value || /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/.test(value),
@@ -9,7 +10,7 @@ export const customerSchema = z.object({
   companyName: z.string().trim().min(2).max(180),
   contactPerson: z.string().trim().min(2).max(120),
   email: z.email().trim().toLowerCase(),
-  phone: z.string().trim().min(5).max(40),
+  phone: requiredMobileNumber,
   address: z.string().trim().min(3).max(500),
   gstin: optionalGstin,
   status: z.enum(["ACTIVE", "INACTIVE"]),

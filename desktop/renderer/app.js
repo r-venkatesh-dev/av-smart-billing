@@ -18,6 +18,35 @@ function today() { return new Date().toISOString().slice(0, 10); }
 function inputDate(days = 0) { const value = new Date(); value.setDate(value.getDate() + days); return value.toISOString().slice(0, 10); }
 function status(value) { return `<span class="status ${esc(value)}">${esc(String(value).replaceAll("_", " "))}</span>`; }
 function initials(value) { return String(value || "AV").trim().split(/\s+/).slice(0, 2).map((part) => part[0]).join("").toUpperCase(); }
+function phoneDigits(value) { return String(value || "").replace(/\D/g, "").slice(0, 10); }
+function formatLicenseKey(value) {
+  const characters = String(value || "").toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 16);
+  return characters.match(/.{1,4}/g)?.join("-") || "";
+}
+function configureRestrictedInput(input) {
+  if (!(input instanceof HTMLInputElement)) return;
+  if (input.type === "tel" || ["phone", "walkInPhone", "posWalkInPhone"].includes(input.name)) {
+    input.type = "tel";
+    input.inputMode = "numeric";
+    input.maxLength = 10;
+    input.pattern = "[0-9]{10}";
+    input.title = "Enter exactly 10 digits.";
+  }
+  if (input.name === "licenseKey") {
+    input.maxLength = 19;
+    input.pattern = "[A-Z0-9]{4}(?:-[A-Z0-9]{4}){3}";
+    input.title = "Enter a license key in ABCD-EFGH-JKLM-NPQR format.";
+  }
+}
+
+root.addEventListener("focusin", (event) => configureRestrictedInput(event.target));
+root.addEventListener("input", (event) => {
+  const input = event.target;
+  configureRestrictedInput(input);
+  if (!(input instanceof HTMLInputElement)) return;
+  if (input.type === "tel" || ["phone", "walkInPhone", "posWalkInPhone"].includes(input.name)) input.value = phoneDigits(input.value);
+  if (input.name === "licenseKey") input.value = formatLicenseKey(input.value);
+}, true);
 
 async function invoke(channel, input) {
   const result = await window.avSmartbilling.invoke(channel, input);

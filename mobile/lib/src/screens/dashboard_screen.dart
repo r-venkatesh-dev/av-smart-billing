@@ -3,37 +3,46 @@ import 'package:flutter/material.dart';
 import '../app.dart';
 import '../models.dart';
 import '../ui_helpers.dart';
+import 'invoices_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({
     super.key,
     required this.controller,
     required this.onSell,
+    required this.drawer,
   });
   final AppController controller;
   final VoidCallback onSell;
+  final Widget drawer;
 
   @override
   State<DashboardScreen> createState() => _DashboardScreenState();
 }
 
 class _DashboardScreenState extends State<DashboardScreen> {
-  late Future<DashboardStats> stats;
+  late Future<_DashboardData> data;
 
   @override
   void initState() {
     super.initState();
-    stats = widget.controller.database.dashboard();
+    data = _load();
   }
 
+  Future<_DashboardData> _load() async => _DashboardData(
+    stats: await widget.controller.database.dashboard(),
+    invoices: await widget.controller.database.invoices(),
+  );
+
   Future<void> _refresh() async {
-    final next = widget.controller.database.dashboard();
-    setState(() => stats = next);
+    final next = _load();
+    setState(() => data = next);
     await next;
   }
 
   @override
   Widget build(BuildContext context) => Scaffold(
+    drawer: widget.drawer,
     appBar: AppBar(
       title: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -49,8 +58,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
         ],
       ),
     ),
-    body: FutureBuilder<DashboardStats>(
-      future: stats,
+    body: FutureBuilder<_DashboardData>(
+      future: data,
       builder: (context, snapshot) {
         if (snapshot.hasError) {
           return ErrorState(
@@ -59,7 +68,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
           );
         }
         if (!snapshot.hasData) return const LoadingView();
-        final value = snapshot.data!;
+        final value = snapshot.data!.stats;
+        final recentInvoices = snapshot.data!.invoices.take(5).toList();
         return RefreshIndicator(
           onRefresh: _refresh,
           child: ListView(
@@ -141,21 +151,64 @@ class _DashboardScreenState extends State<DashboardScreen> {
               ),
               const SizedBox(height: 20),
               Card(
-                child: ListTile(
-                  contentPadding: const EdgeInsets.all(16),
-                  leading: CircleAvatar(
-                    backgroundColor: const Color(0xffe6f2f0),
-                    child: Icon(
-                      Icons.phone_android,
-                      color: Theme.of(context).colorScheme.primary,
-                    ),
-                  ),
-                  title: const Text(
-                    'This phone works offline',
-                    style: TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                  subtitle: Text(
-                    'License valid offline until ${widget.controller.session!.validUntil.toLocal().toString().substring(0, 16)}',
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Padding(
+                        padding: EdgeInsets.fromLTRB(16, 10, 16, 8),
+                        child: Text(
+                          'RECENT BILLS',
+                          style: TextStyle(
+                            fontSize: 11,
+                            letterSpacing: 1,
+                            color: Colors.grey,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                      if (recentInvoices.isEmpty)
+                        const Padding(
+                          padding: EdgeInsets.fromLTRB(16, 8, 16, 18),
+                          child: Text(
+                            'Your latest completed bills will appear here.',
+                          ),
+                        )
+                      else
+                        for (final invoice in recentInvoices)
+                          ListTile(
+                            leading: const CircleAvatar(
+                              backgroundColor: Color(0xffe6f2f0),
+                              child: Icon(
+                                Icons.receipt_outlined,
+                                color: Color(0xff057c73),
+                              ),
+                            ),
+                            title: Text(
+                              invoice.invoiceNumber,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            subtitle: Text(invoice.customerName),
+                            trailing: Text(
+                              money(invoice.totalInPaise),
+                              style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            onTap: () => Navigator.push(
+                              context,
+                              MaterialPageRoute<void>(
+                                builder: (_) => InvoiceDetailScreen(
+                                  controller: widget.controller,
+                                  invoiceId: invoice.id,
+                                ),
+                              ),
+                            ),
+                          ),
+                    ],
                   ),
                 ),
               ),
@@ -165,6 +218,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
       },
     ),
   );
+}
+
+class _DashboardData {
+  const _DashboardData({required this.stats, required this.invoices});
+
+  final DashboardStats stats;
+  final List<InvoiceSummary> invoices;
 }
 
 class _StatCard extends StatelessWidget {

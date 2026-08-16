@@ -53,9 +53,9 @@ export async function signLicenseGrant(grant: LicenseGrant, client: LicenseClien
   return { token, validUntil: validUntil.toISOString(), publicKey: Buffer.from(publicDer).toString("base64url"), keyId: env.LICENSE_SIGNING_KEY_ID, issuer: env.LICENSE_ISSUER };
 }
 
-export async function verifyLicenseGrant(token: string): Promise<LicenseGrant> {
+export async function verifyLicenseGrant(token: string, client: LicenseClient = "DESKTOP"): Promise<LicenseGrant> {
   const env = getServerEnv();
-  const { payload } = await jwtVerify(token, createPublicKey(privateKey()), { issuer: env.LICENSE_ISSUER, audience: "av-smartbilling-desktop", algorithms: ["EdDSA"] });
+  const { payload } = await jwtVerify(token, createPublicKey(privateKey()), { issuer: env.LICENSE_ISSUER, audience: audienceFor(client), algorithms: ["EdDSA"] });
   if (payload.type !== "av-smartbilling-license" || !payload.licenseId || !payload.deviceId || !payload.customerName || !payload.planName || !payload.licenseExpiresAt) throw new Error("Invalid license grant");
   return { licenseId: String(payload.licenseId), deviceId: String(payload.deviceId), customerName: String(payload.customerName), planName: String(payload.planName), expiresAt: String(payload.licenseExpiresAt), validationWindowDays: 0, maxDevices: Number(payload.maxDevices) };
 }

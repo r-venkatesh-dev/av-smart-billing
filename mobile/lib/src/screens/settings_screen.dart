@@ -56,7 +56,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: const Text('Settings')),
+    appBar: AppBar(title: const Text('Business Settings')),
     body: business == null
         ? const LoadingView()
         : ListView(

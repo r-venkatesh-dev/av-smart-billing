@@ -3,6 +3,7 @@ import 'package:sqflite/sqflite.dart';
 import 'package:uuid/uuid.dart';
 
 import 'billing_math.dart';
+import 'input_rules.dart';
 import 'models.dart';
 
 class AppDatabase {
@@ -69,6 +70,8 @@ class AppDatabase {
   )).single;
 
   Future<void> saveBusiness(Map<String, Object?> values) async {
+    final phoneError = validateOptionalMobileNumber(values['phone'] as String?);
+    if (phoneError != null) throw Exception(phoneError);
     await db.update(
       'business',
       values,
@@ -171,6 +174,8 @@ class AppDatabase {
     required String gstin,
   }) async {
     if (name.trim().length < 2) throw Exception('Customer name is required.');
+    final phoneError = validateOptionalMobileNumber(phone);
+    if (phoneError != null) throw Exception(phoneError);
     final timestamp = DateTime.now().toUtc().toIso8601String();
     final row = {
       'id': id ?? const Uuid().v4(),
@@ -224,6 +229,43 @@ class AppDatabase {
     orderBy: 'issued_at desc',
   )).map(InvoiceSummary.fromMap).toList();
 
+  Future<SalesReport> salesReport(DateTime from, DateTime to) async {
+    final start = DateTime(from.year, from.month, from.day);
+    final end = DateTime(
+      to.year,
+      to.month,
+      to.day,
+    ).add(const Duration(days: 1));
+    final rows = await db.query(
+      'invoices',
+      where: 'issued_at>=? and issued_at<?',
+      whereArgs: [
+        start.toUtc().toIso8601String(),
+        end.toUtc().toIso8601String(),
+      ],
+      orderBy: 'issued_at desc',
+    );
+    return SalesReport(
+      from: start,
+      to: DateTime(to.year, to.month, to.day),
+      invoices: rows
+          .map(
+            (row) => ReportInvoice(
+              invoiceNumber: row['invoice_number'] as String,
+              customerName: row['customer_name'] as String,
+              issuedAt: DateTime.parse(row['issued_at'] as String),
+              status: row['status'] as String,
+              paymentMethod: row['payment_method'] as String,
+              subtotalInPaise: row['subtotal_in_paise'] as int,
+              discountInPaise: row['discount_in_paise'] as int,
+              taxInPaise: row['tax_in_paise'] as int,
+              totalInPaise: row['total_in_paise'] as int,
+            ),
+          )
+          .toList(),
+    );
+  }
+
   Future<InvoiceDetail> invoice(String id) async {
     final invoice = (await db.query(
       'invoices',
@@ -243,6 +285,57 @@ class AppDatabase {
     );
   }
 
+  Future<List<CloudBackupRecord>> cloudBackupRecords(String entity) async {
+    switch (entity) {
+      case 'products':
+        final rows = await db.query('products', orderBy: 'created_at');
+        return rows
+            .map(
+              (row) => CloudBackupRecord(
+                localId: row['id'] as String,
+                updatedAt: DateTime.parse(row['updated_at'] as String),
+                payload: Map<String, Object?>.from(row),
+              ),
+            )
+            .toList();
+      case 'customers':
+        final rows = await db.query('customers', orderBy: 'created_at');
+        return rows
+            .map(
+              (row) => CloudBackupRecord(
+                localId: row['id'] as String,
+                updatedAt: DateTime.parse(row['updated_at'] as String),
+                payload: Map<String, Object?>.from(row),
+              ),
+            )
+            .toList();
+      case 'invoices':
+        final rows = await db.query('invoices', orderBy: 'created_at');
+        final records = <CloudBackupRecord>[];
+        for (final row in rows) {
+          final id = row['id'] as String;
+          final items = await db.query(
+            'invoice_items',
+            where: 'invoice_id=?',
+            whereArgs: [id],
+          );
+          records.add(
+            CloudBackupRecord(
+              localId: id,
+              updatedAt: DateTime.parse(row['created_at'] as String),
+              payload: {
+                ...Map<String, Object?>.from(row),
+                'items': items.map(Map<String, Object?>.from).toList(),
+              },
+            ),
+          );
+        }
+        return records;
+      default:
+        throw ArgumentError.value(entity, 'entity', 'Unsupported backup type');
+    }
+  }
+
   Future<String> createInvoice({
     Customer? customer,
     required String walkInName,
@@ -253,6 +346,10 @@ class AppDatabase {
     if (lines.isEmpty) throw Exception('Add at least one product.');
     if (customer == null && walkInName.trim().length < 2) {
       throw Exception('Enter the walk-in customer name.');
+    }
+    if (customer == null) {
+      final phoneError = validateOptionalMobileNumber(walkInPhone);
+      if (phoneError != null) throw Exception(phoneError);
     }
     return db.transaction((txn) async {
       final business = (await txn.query(

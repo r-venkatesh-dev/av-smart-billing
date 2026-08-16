@@ -74,6 +74,7 @@ function registerIpc() {
   expose("license:activate", async (input) => {
     const identity = getDeviceIdentity();
     const licenseKey = String(input.licenseKey || "").trim().toUpperCase();
+    if (!/^[A-Z0-9]{4}(?:-[A-Z0-9]{4}){3}$/.test(licenseKey)) throw new Error("Enter a valid license key.");
     const result = await cloud.activate({ licenseKey, deviceName: String(input.deviceName || identity.deviceName).trim(), deviceFingerprint: identity.fingerprint });
     const record = licenses.saveActivation(result, identity.fingerprint, licenseKey, null);
     initializeBillingName(record.grant.customerName);

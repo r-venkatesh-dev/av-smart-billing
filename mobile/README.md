@@ -11,9 +11,17 @@ Android-first, offline billing companion for AV Smartbilling. Products, customer
 - GST calculation using integer paise
 - Local invoice history
 - A4 PDF invoice generation, system printing and WhatsApp/share-sheet delivery
+- Paired Bluetooth thermal printing with 58 mm and 80 mm receipt layouts
+- Date-range sales reports with CSV, Excel and PDF exports
+- Optional PIN and fingerprint app lock
+- Incremental, per-entity cloud push for products, customers and invoices
 - Business and GST identity settings
 
-Cloud backup, Bluetooth thermal printing and multi-device synchronization are intentionally outside this first milestone.
+Cloud restore and multi-device synchronization remain intentionally outside this milestone. The restore screen is included as a disabled preview for a later phase.
+
+The selected master artwork for the Android launcher icon is stored at
+`assets/branding/av-smartbilling-icon-concept-3.png`. Android density and
+adaptive-icon resources are generated from that master.
 
 ## Run
 
