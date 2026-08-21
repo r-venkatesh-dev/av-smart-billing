@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../app.dart';
+import '../security_service.dart';
 import '../ui_helpers.dart';
 
 class SecurityScreen extends StatefulWidget {
@@ -18,6 +19,7 @@ class _SecurityScreenState extends State<SecurityScreen> {
   bool enabled = false;
   bool biometricAvailable = false;
   bool biometricEnabled = false;
+  bool legacyPin = false;
 
   @override
   void initState() {
@@ -26,68 +28,32 @@ class _SecurityScreenState extends State<SecurityScreen> {
   }
 
   Future<void> _load() async {
-    final values = await Future.wait([
-      widget.controller.security.enabled,
-      widget.controller.security.biometricAvailable,
-      widget.controller.security.biometricEnabled,
-    ]);
+    final enabledValue = await widget.controller.security.enabled;
+    final biometricAvailableValue =
+        await widget.controller.security.biometricAvailable;
+    final biometricEnabledValue =
+        await widget.controller.security.biometricEnabled;
+    final configuredPinLength =
+        await widget.controller.security.configuredPinLength;
     if (!mounted) return;
     setState(() {
-      enabled = values[0];
-      biometricAvailable = values[1];
-      biometricEnabled = values[2];
+      enabled = enabledValue;
+      biometricAvailable = biometricAvailableValue;
+      biometricEnabled = biometricEnabledValue;
+      legacyPin = enabledValue && configuredPinLength == null;
       loading = false;
     });
   }
 
-  Future<String?> _askPin({required String title, bool confirm = false}) async {
-    final first = TextEditingController();
-    final second = TextEditingController();
-    final form = GlobalKey<FormState>();
-    final result = await showDialog<String>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text(title),
-        content: Form(
-          key: form,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              _PinField(controller: first, label: confirm ? 'New PIN' : 'PIN'),
-              if (confirm) ...[
-                const SizedBox(height: 12),
-                _PinField(controller: second, label: 'Confirm PIN'),
-              ],
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () {
-              if (!form.currentState!.validate()) return;
-              if (confirm && first.text != second.text) {
-                showMessage(
-                  context,
-                  'PIN confirmation does not match.',
-                  error: true,
-                );
-                return;
-              }
-              Navigator.pop(context, first.text);
-            },
-            child: const Text('Continue'),
-          ),
-        ],
-      ),
-    );
-    first.dispose();
-    second.dispose();
-    return result;
-  }
+  Future<String?> _askPin({
+    required String title,
+    bool confirm = false,
+    bool allowLegacy = false,
+  }) => showDialog<String>(
+    context: context,
+    builder: (_) =>
+        AppPinDialog(title: title, confirm: confirm, allowLegacy: allowLegacy),
+  );
 
   Future<void> _enable() async {
     final pin = await _askPin(title: 'Create App PIN', confirm: true);
@@ -100,12 +66,16 @@ class _SecurityScreenState extends State<SecurityScreen> {
     setState(() {
       enabled = true;
       biometricEnabled = biometricAvailable;
+      legacyPin = false;
     });
     showMessage(context, 'App lock enabled.');
   }
 
   Future<void> _disable() async {
-    final pin = await _askPin(title: 'Enter current PIN');
+    final pin = await _askPin(
+      title: 'Enter current PIN',
+      allowLegacy: legacyPin,
+    );
     if (pin == null || !mounted) return;
     if (!await widget.controller.security.verifyPin(pin)) {
       if (mounted) showMessage(context, 'Incorrect PIN.', error: true);
@@ -116,12 +86,16 @@ class _SecurityScreenState extends State<SecurityScreen> {
     setState(() {
       enabled = false;
       biometricEnabled = false;
+      legacyPin = false;
     });
     showMessage(context, 'App lock disabled.');
   }
 
   Future<void> _changePin() async {
-    final current = await _askPin(title: 'Enter current PIN');
+    final current = await _askPin(
+      title: 'Enter current PIN',
+      allowLegacy: legacyPin,
+    );
     if (current == null || !mounted) return;
     if (!await widget.controller.security.verifyPin(current)) {
       if (mounted) showMessage(context, 'Incorrect PIN.', error: true);
@@ -131,7 +105,10 @@ class _SecurityScreenState extends State<SecurityScreen> {
     final next = await _askPin(title: 'Create New PIN', confirm: true);
     if (next == null || !mounted) return;
     await widget.controller.security.changePin(next);
-    if (mounted) showMessage(context, 'App PIN changed.');
+    if (mounted) {
+      setState(() => legacyPin = false);
+      showMessage(context, 'App PIN changed.');
+    }
   }
 
   @override
@@ -154,6 +131,19 @@ class _SecurityScreenState extends State<SecurityScreen> {
                 ),
               ),
               if (enabled) ...[
+                if (legacyPin) ...[
+                  const SizedBox(height: 12),
+                  Card(
+                    color: Color(0xfffff7e6),
+                    child: ListTile(
+                      leading: Icon(Icons.info_outline),
+                      title: Text('Update your PIN'),
+                      subtitle: Text(
+                        'Change the PIN once to apply the new mandatory 6-digit security rule.',
+                      ),
+                    ),
+                  ),
+                ],
                 const SizedBox(height: 12),
                 Card(
                   child: Column(
@@ -222,10 +212,97 @@ class _SecurityScreenState extends State<SecurityScreen> {
   );
 }
 
+class AppPinDialog extends StatefulWidget {
+  const AppPinDialog({
+    super.key,
+    required this.title,
+    required this.confirm,
+    required this.allowLegacy,
+  });
+
+  final String title;
+  final bool confirm;
+  final bool allowLegacy;
+
+  @override
+  State<AppPinDialog> createState() => _AppPinDialogState();
+}
+
+class _AppPinDialogState extends State<AppPinDialog> {
+  final first = TextEditingController();
+  final second = TextEditingController();
+  final form = GlobalKey<FormState>();
+  String? mismatchError;
+
+  @override
+  void dispose() {
+    first.dispose();
+    second.dispose();
+    super.dispose();
+  }
+
+  void _continue() {
+    setState(() => mismatchError = null);
+    if (!form.currentState!.validate()) return;
+    if (widget.confirm && first.text != second.text) {
+      setState(() => mismatchError = 'PIN confirmation does not match.');
+      return;
+    }
+    Navigator.pop(context, first.text);
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+    title: Text(widget.title),
+    content: Form(
+      key: form,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _PinField(
+            controller: first,
+            label: widget.confirm ? 'New 6-digit PIN' : 'PIN',
+            allowLegacy: widget.allowLegacy,
+          ),
+          if (widget.confirm) ...[
+            const SizedBox(height: 12),
+            _PinField(controller: second, label: 'Confirm 6-digit PIN'),
+          ],
+          if (mismatchError != null) ...[
+            const SizedBox(height: 10),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                mismatchError!,
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.error,
+                  fontSize: 12,
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    ),
+    actions: [
+      TextButton(
+        onPressed: () => Navigator.pop(context),
+        child: const Text('Cancel'),
+      ),
+      FilledButton(onPressed: _continue, child: const Text('Continue')),
+    ],
+  );
+}
+
 class _PinField extends StatelessWidget {
-  const _PinField({required this.controller, required this.label});
+  const _PinField({
+    required this.controller,
+    required this.label,
+    this.allowLegacy = false,
+  });
   final TextEditingController controller;
   final String label;
+  final bool allowLegacy;
 
   @override
   Widget build(BuildContext context) => TextFormField(
@@ -237,8 +314,10 @@ class _PinField extends StatelessWidget {
       LengthLimitingTextInputFormatter(6),
     ],
     decoration: InputDecoration(labelText: label),
-    validator: (value) => RegExp(r'^\d{4,6}$').hasMatch(value ?? '')
-        ? null
-        : 'Enter a 4 to 6 digit PIN.',
+    validator: (value) => allowLegacy
+        ? RegExp(r'^\d{4,6}$').hasMatch(value ?? '')
+              ? null
+              : 'Enter your existing PIN.'
+        : validateNewAppPin(value),
   );
 }

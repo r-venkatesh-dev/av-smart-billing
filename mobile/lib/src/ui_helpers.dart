@@ -4,6 +4,25 @@ import 'package:intl/intl.dart';
 final currency = NumberFormat.currency(locale: 'en_IN', symbol: '₹');
 String money(int paise) => currency.format(paise / 100);
 
+String formatQuantity(num value) {
+  final number = value.toDouble();
+  if (number == number.roundToDouble()) return number.toInt().toString();
+  return number.toStringAsFixed(2).replaceFirst(RegExp(r'0+$'), '');
+}
+
+String readableUnit(String value, {num quantity = 2}) {
+  final unit = value.trim();
+  if (unit.isEmpty || double.tryParse(unit) != null || unit.length > 16) {
+    return quantity.toDouble() == 1 ? 'item' : 'items';
+  }
+  return unit;
+}
+
+String stockLabel(num quantity, String unit) =>
+    'Stock: ${formatQuantity(quantity)} ${readableUnit(unit, quantity: quantity)}';
+
+String formatPercent(num value) => '${formatQuantity(value)}%';
+
 String errorMessage(Object error) {
   final message = error.toString();
   for (final prefix in const [

@@ -111,15 +111,18 @@ class ThermalPrinterService {
     _line(bytes, _repeat('-', width));
     for (final item in detail.items) {
       _wrapped(bytes, item['description'] as String, width);
-      final quantity = item['quantity'];
+      final quantity = _quantity(item['quantity']);
       final rate = _money(item['unit_price_in_paise']);
       final amount = _money(
         (item['taxable_in_paise'] as int) + (item['tax_in_paise'] as int),
       );
       _line(bytes, _columns('$quantity x $rate', amount, width));
+      if ((item['discount_in_paise'] as int) > 0) {
+        _line(bytes, 'Discount: -${_money(item['discount_in_paise'])}');
+      }
       _line(
         bytes,
-        'GST ${(item['tax_rate_basis_points'] as int) / 100}% included',
+        'GST ${_quantity((item['tax_rate_basis_points'] as int) / 100)}% included',
       );
     }
     _line(bytes, _repeat('-', width));
@@ -127,10 +130,24 @@ class ThermalPrinterService {
       bytes,
       _columns('Subtotal', _money(invoice['subtotal_in_paise']), width),
     );
-    if ((invoice['discount_in_paise'] as int) > 0) {
+    if (((invoice['line_discount_in_paise'] as int?) ?? 0) > 0) {
       _line(
         bytes,
-        _columns('Discount', '-${_money(invoice['discount_in_paise'])}', width),
+        _columns(
+          'Item discount',
+          '-${_money(invoice['line_discount_in_paise'])}',
+          width,
+        ),
+      );
+    }
+    if (((invoice['overall_discount_in_paise'] as int?) ?? 0) > 0) {
+      _line(
+        bytes,
+        _columns(
+          'Bill discount',
+          '-${_money(invoice['overall_discount_in_paise'])}',
+          width,
+        ),
       );
     }
     _line(bytes, _columns('GST', _money(invoice['tax_in_paise']), width));
@@ -195,4 +212,10 @@ class ThermalPrinterService {
       .replaceAll('₹', 'Rs ')
       .replaceAll(RegExp(r'[^\x20-\x7E]'), ' ')
       .trim();
+
+  String _quantity(Object? value) {
+    final number = (value as num?)?.toDouble() ?? 0;
+    if (number == number.roundToDouble()) return '${number.toInt()}';
+    return number.toStringAsFixed(2).replaceFirst(RegExp(r'0+$'), '');
+  }
 }

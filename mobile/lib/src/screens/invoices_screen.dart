@@ -5,15 +5,48 @@ import '../app.dart';
 import '../invoice_pdf.dart';
 import '../models.dart';
 import '../ui_helpers.dart';
+import '../whatsapp_service.dart';
 import 'thermal_print_sheet.dart';
+
+List<InvoiceSummary> filterInvoices(
+  Iterable<InvoiceSummary> invoices,
+  String query,
+) {
+  final terms = query
+      .trim()
+      .toLowerCase()
+      .split(RegExp(r'\s+'))
+      .where((term) => term.isNotEmpty)
+      .toList();
+  if (terms.isEmpty) return invoices.toList();
+
+  return invoices.where((invoice) {
+    final issuedAt = invoice.issuedAt.toLocal();
+    final total = invoice.totalInPaise / 100;
+    final searchableText = [
+      invoice.invoiceNumber,
+      invoice.customerName,
+      invoice.status,
+      DateFormat('dd MMM yyyy').format(issuedAt),
+      DateFormat('dd/MM/yyyy').format(issuedAt),
+      DateFormat('dd-MM-yyyy').format(issuedAt),
+      money(invoice.totalInPaise),
+      total.toStringAsFixed(2),
+      if (total == total.roundToDouble()) total.toInt().toString(),
+    ].join(' ').toLowerCase();
+    return terms.every(searchableText.contains);
+  }).toList();
+}
 
 class InvoicesScreen extends StatefulWidget {
   const InvoicesScreen({
     super.key,
     required this.controller,
+    required this.revision,
     required this.drawer,
   });
   final AppController controller;
+  final int revision;
   final Widget drawer;
 
   @override
@@ -22,11 +55,20 @@ class InvoicesScreen extends StatefulWidget {
 
 class _InvoicesScreenState extends State<InvoicesScreen> {
   late Future<List<InvoiceSummary>> invoices;
+  String query = '';
 
   @override
   void initState() {
     super.initState();
     invoices = widget.controller.database.invoices();
+  }
+
+  @override
+  void didUpdateWidget(covariant InvoicesScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.revision != widget.revision) {
+      invoices = widget.controller.database.invoices();
+    }
   }
 
   Future<void> _refresh() async {
@@ -35,84 +77,164 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
     await next;
   }
 
+  Future<void> _delete(InvoiceSummary invoice) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete invoice?'),
+        content: Text(
+          'Delete ${invoice.invoiceNumber}? Its sold quantities will be returned to stock. This cannot be undone.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Keep invoice'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(context).colorScheme.error,
+            ),
+            child: const Text('Delete and restore stock'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    try {
+      await widget.controller.database.deleteInvoice(invoice.id);
+      await _refresh();
+      widget.controller.markDataChanged();
+    } catch (error) {
+      if (mounted) showMessage(context, errorMessage(error), error: true);
+    }
+  }
+
   @override
   Widget build(BuildContext context) => Scaffold(
     drawer: widget.drawer,
     appBar: AppBar(title: const Text('Invoices')),
-    body: FutureBuilder<List<InvoiceSummary>>(
-      future: invoices,
-      builder: (context, snapshot) {
-        if (snapshot.hasError) {
-          return ErrorState(
-            message: errorMessage(snapshot.error!),
-            onRetry: _refresh,
-          );
-        }
-        if (!snapshot.hasData) return const LoadingView();
-        if (snapshot.data!.isEmpty) {
-          return const EmptyState(
-            icon: Icons.receipt_long_outlined,
-            title: 'No invoices yet',
-            message: 'Completed sales will appear here.',
-          );
-        }
-        return RefreshIndicator(
-          onRefresh: _refresh,
-          child: ListView.separated(
-            physics: const AlwaysScrollableScrollPhysics(),
-            padding: const EdgeInsets.all(16),
-            itemCount: snapshot.data!.length,
-            separatorBuilder: (_, _) => const SizedBox(height: 8),
-            itemBuilder: (context, index) {
-              final invoice = snapshot.data![index];
-              return Card(
-                child: ListTile(
-                  onTap: () => Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => InvoiceDetailScreen(
-                        controller: widget.controller,
-                        invoiceId: invoice.id,
-                      ),
-                    ),
-                  ),
-                  leading: CircleAvatar(
-                    backgroundColor: const Color(0xffe6f2f0),
-                    child: const Icon(Icons.receipt, color: Color(0xff057c73)),
-                  ),
-                  title: Text(
-                    invoice.invoiceNumber,
-                    style: const TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                  subtitle: Text(
-                    '${invoice.customerName}\n${DateFormat('dd MMM yyyy, hh:mm a').format(invoice.issuedAt.toLocal())}',
-                  ),
-                  isThreeLine: true,
-                  trailing: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: [
-                      Text(
-                        money(invoice.totalInPaise),
-                        style: const TextStyle(fontWeight: FontWeight.bold),
-                      ),
-                      Text(
-                        invoice.status,
-                        style: TextStyle(
-                          fontSize: 11,
-                          color: invoice.status == 'PAID'
-                              ? Colors.green.shade700
-                              : Colors.orange.shade800,
+    body: Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+          child: TextField(
+            onChanged: (value) => setState(() => query = value),
+            textInputAction: TextInputAction.search,
+            decoration: const InputDecoration(
+              prefixIcon: Icon(Icons.search),
+              hintText: 'Search invoice number, customer or date',
+            ),
+          ),
+        ),
+        Expanded(
+          child: FutureBuilder<List<InvoiceSummary>>(
+            future: invoices,
+            builder: (context, snapshot) {
+              if (snapshot.hasError) {
+                return ErrorState(
+                  message: errorMessage(snapshot.error!),
+                  onRetry: _refresh,
+                );
+              }
+              if (!snapshot.hasData) return const LoadingView();
+              final allInvoices = snapshot.data!;
+              final visibleInvoices = filterInvoices(allInvoices, query);
+              if (allInvoices.isEmpty) {
+                return const EmptyState(
+                  icon: Icons.receipt_long_outlined,
+                  title: 'No invoices yet',
+                  message: 'Completed sales will appear here.',
+                );
+              }
+              if (visibleInvoices.isEmpty) {
+                return const EmptyState(
+                  icon: Icons.search_off_outlined,
+                  title: 'No matching invoices',
+                  message: 'Try a different invoice number, customer or date.',
+                );
+              }
+              return RefreshIndicator(
+                onRefresh: _refresh,
+                child: ListView.separated(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+                  itemCount: visibleInvoices.length,
+                  separatorBuilder: (_, _) => const SizedBox(height: 8),
+                  itemBuilder: (context, index) {
+                    final invoice = visibleInvoices[index];
+                    return Card(
+                      child: ListTile(
+                        onTap: () => Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => InvoiceDetailScreen(
+                              controller: widget.controller,
+                              invoiceId: invoice.id,
+                            ),
+                          ),
+                        ),
+                        leading: CircleAvatar(
+                          backgroundColor: const Color(0xffe6f2f0),
+                          child: const Icon(
+                            Icons.receipt,
+                            color: Color(0xff057c73),
+                          ),
+                        ),
+                        title: Text(
+                          invoice.invoiceNumber,
+                          style: const TextStyle(fontWeight: FontWeight.bold),
+                        ),
+                        subtitle: Text(
+                          '${invoice.customerName}\n${DateFormat('dd MMM yyyy, hh:mm a').format(invoice.issuedAt.toLocal())}',
+                        ),
+                        isThreeLine: true,
+                        trailing: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              crossAxisAlignment: CrossAxisAlignment.end,
+                              children: [
+                                Text(
+                                  money(invoice.totalInPaise),
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                                Text(
+                                  invoice.status,
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color: invoice.status == 'PAID'
+                                        ? Colors.green.shade700
+                                        : Colors.orange.shade800,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            PopupMenuButton<String>(
+                              onSelected: (value) {
+                                if (value == 'delete') _delete(invoice);
+                              },
+                              itemBuilder: (_) => const [
+                                PopupMenuItem(
+                                  value: 'delete',
+                                  child: Text('Delete invoice'),
+                                ),
+                              ],
+                            ),
+                          ],
                         ),
                       ),
-                    ],
-                  ),
+                    );
+                  },
                 ),
               );
             },
           ),
-        );
-      },
+        ),
+      ],
     ),
   );
 }
@@ -189,6 +311,13 @@ class _InvoiceDetailScreenState extends State<InvoiceDetailScreen> {
                         fontWeight: FontWeight.bold,
                       ),
                     ),
+                    if ((detail.business['address'] as String).isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 6),
+                        child: Text(detail.business['address'] as String),
+                      ),
+                    if ((detail.business['phone'] as String).isNotEmpty)
+                      Text('Phone: ${detail.business['phone']}'),
                     const Divider(height: 28),
                     const Text(
                       'BILL TO',
@@ -225,8 +354,16 @@ class _InvoiceDetailScreenState extends State<InvoiceDetailScreen> {
                                     ),
                                   ),
                                   Text(
-                                    '${item['quantity']} ${item['unit']} × ${money(item['unit_price_in_paise'] as int)} · GST ${(item['tax_rate_basis_points'] as int) / 100}%',
+                                    '${formatQuantity(item['quantity'] as num)} ${readableUnit(item['unit'] as String, quantity: item['quantity'] as num)} × ${money(item['unit_price_in_paise'] as int)} · GST ${formatPercent((item['tax_rate_basis_points'] as int) / 100)}',
                                   ),
+                                  if ((item['discount_in_paise'] as int) > 0)
+                                    Text(
+                                      'Discount ${formatPercent((item['discount_percent'] as num?) ?? 0)} · -${money(item['discount_in_paise'] as int)}',
+                                      style: TextStyle(
+                                        color: Colors.orange.shade800,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
                                 ],
                               ),
                             ),
@@ -248,11 +385,19 @@ class _InvoiceDetailScreenState extends State<InvoiceDetailScreen> {
                       label: 'Subtotal',
                       value: money(invoice['subtotal_in_paise'] as int),
                     ),
-                    if ((invoice['discount_in_paise'] as int) > 0)
+                    if (((invoice['line_discount_in_paise'] as int?) ?? 0) > 0)
                       _Amount(
-                        label: 'Discount',
+                        label: 'Product discounts',
                         value:
-                            '- ${money(invoice['discount_in_paise'] as int)}',
+                            '- ${money(invoice['line_discount_in_paise'] as int)}',
+                      ),
+                    if (((invoice['overall_discount_in_paise'] as int?) ?? 0) >
+                        0)
+                      _Amount(
+                        label:
+                            'Overall discount (${formatPercent(invoice['overall_discount_percent'] as num)})',
+                        value:
+                            '- ${money(invoice['overall_discount_in_paise'] as int)}',
                       ),
                     _Amount(
                       label: 'GST',
@@ -276,6 +421,24 @@ class _InvoiceDetailScreenState extends State<InvoiceDetailScreen> {
             FilledButton.icon(
               onPressed: () async {
                 try {
+                  await const WhatsAppService().openCustomerChat(detail);
+                } catch (error) {
+                  if (context.mounted) {
+                    showMessage(context, errorMessage(error), error: true);
+                  }
+                }
+              },
+              icon: const Icon(Icons.chat_outlined),
+              label: const Text('Message customer on WhatsApp'),
+              style: FilledButton.styleFrom(
+                backgroundColor: const Color(0xff128c7e),
+                minimumSize: const Size.fromHeight(52),
+              ),
+            ),
+            const SizedBox(height: 10),
+            OutlinedButton.icon(
+              onPressed: () async {
+                try {
                   await shareInvoice(detail);
                 } catch (error) {
                   if (context.mounted) {
@@ -288,9 +451,23 @@ class _InvoiceDetailScreenState extends State<InvoiceDetailScreen> {
                 }
               },
               icon: const Icon(Icons.share),
-              label: const Text('Share PDF / WhatsApp'),
-              style: FilledButton.styleFrom(
+              label: const Text('Share invoice PDF'),
+              style: OutlinedButton.styleFrom(
                 minimumSize: const Size.fromHeight(52),
+              ),
+            ),
+            const SizedBox(height: 10),
+            OutlinedButton.icon(
+              onPressed: () => showModalBottomSheet<void>(
+                context: context,
+                isScrollControlled: true,
+                showDragHandle: true,
+                builder: (_) => ThermalReceiptPreviewSheet(invoice: detail),
+              ),
+              icon: const Icon(Icons.preview_outlined),
+              label: const Text('Preview thermal receipt'),
+              style: OutlinedButton.styleFrom(
+                minimumSize: const Size.fromHeight(50),
               ),
             ),
             const SizedBox(height: 10),

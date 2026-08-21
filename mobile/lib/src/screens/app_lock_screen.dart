@@ -16,6 +16,7 @@ class _AppLockScreenState extends State<AppLockScreen> {
   final pin = TextEditingController();
   bool busy = false;
   bool biometricAvailable = false;
+  int minimumPinLength = 6;
   String? error;
 
   @override
@@ -34,13 +35,21 @@ class _AppLockScreenState extends State<AppLockScreen> {
     final available =
         await widget.controller.security.biometricAvailable &&
         await widget.controller.security.biometricEnabled;
+    final configuredLength =
+        await widget.controller.security.configuredPinLength;
     if (!mounted) return;
-    setState(() => biometricAvailable = available);
+    setState(() {
+      biometricAvailable = available;
+      minimumPinLength = configuredLength ?? 4;
+    });
     if (available) await _biometric();
   }
 
   Future<void> _unlock() async {
-    if (pin.text.length < 4) return;
+    if (pin.text.length < minimumPinLength || pin.text.length > 6) {
+      setState(() => error = 'Enter your complete PIN.');
+      return;
+    }
     setState(() {
       busy = true;
       error = null;
@@ -113,6 +122,9 @@ class _AppLockScreenState extends State<AppLockScreen> {
                     LengthLimitingTextInputFormatter(6),
                   ],
                   onSubmitted: (_) => _unlock(),
+                  onChanged: (_) {
+                    if (error != null) setState(() => error = null);
+                  },
                   decoration: InputDecoration(
                     labelText: 'App PIN',
                     prefixIcon: const Icon(Icons.pin_outlined),

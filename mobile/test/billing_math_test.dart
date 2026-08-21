@@ -40,5 +40,27 @@ void main() {
         throwsArgumentError,
       );
     });
+
+    test(
+      'applies an overall discount after product discounts and before GST',
+      () {
+        final line = calculateLine(
+          priceInPaise: 10000,
+          quantity: 2,
+          discountPercent: 10,
+          taxRateBasisPoints: 1800,
+        );
+        final bill = calculateBill(
+          lines: [(amounts: line, taxRateBasisPoints: 1800)],
+          overallDiscountPercent: 10,
+        );
+
+        expect(bill.subtotal, 20000);
+        expect(bill.lineDiscount, 2000);
+        expect(bill.overallDiscount, 1800);
+        expect(bill.tax, 2916);
+        expect(bill.total, 19116);
+      },
+    );
   });
 }

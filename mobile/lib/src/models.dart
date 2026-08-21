@@ -51,6 +51,7 @@ class Product {
     required this.unit,
     required this.priceInPaise,
     required this.taxRateBasisPoints,
+    required this.discountPercent,
     required this.stockQuantity,
     required this.active,
   });
@@ -61,6 +62,7 @@ class Product {
   final String unit;
   final int priceInPaise;
   final int taxRateBasisPoints;
+  final double discountPercent;
   final double stockQuantity;
   final bool active;
   factory Product.fromMap(Map<String, Object?> row) => Product(
@@ -71,6 +73,7 @@ class Product {
     unit: row['unit'] as String,
     priceInPaise: row['price_in_paise'] as int,
     taxRateBasisPoints: row['tax_rate_basis_points'] as int,
+    discountPercent: (row['discount_percent'] as num?)?.toDouble() ?? 0,
     stockQuantity: (row['stock_quantity'] as num).toDouble(),
     active: row['active'] == 1,
   );
@@ -107,6 +110,20 @@ class CartLine {
   final Product product;
   double quantity;
   double discountPercent;
+}
+
+class HeldBillSummary {
+  const HeldBillSummary({
+    required this.id,
+    required this.label,
+    required this.createdAt,
+    required this.itemCount,
+  });
+
+  final String id;
+  final String label;
+  final DateTime createdAt;
+  final int itemCount;
 }
 
 class InvoiceSummary {

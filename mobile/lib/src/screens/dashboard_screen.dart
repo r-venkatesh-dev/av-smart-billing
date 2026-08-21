@@ -9,10 +9,12 @@ class DashboardScreen extends StatefulWidget {
   const DashboardScreen({
     super.key,
     required this.controller,
+    required this.revision,
     required this.onSell,
     required this.drawer,
   });
   final AppController controller;
+  final int revision;
   final VoidCallback onSell;
   final Widget drawer;
 
@@ -27,6 +29,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
   void initState() {
     super.initState();
     data = _load();
+  }
+
+  @override
+  void didUpdateWidget(covariant DashboardScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.revision != widget.revision) data = _load();
   }
 
   Future<_DashboardData> _load() async => _DashboardData(

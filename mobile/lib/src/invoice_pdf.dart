@@ -83,14 +83,17 @@ Future<Uint8List> buildInvoicePdf(InvoiceDetail detail) async {
           pw.Text('GSTIN: ${invoice['customer_gstin']}'),
         pw.SizedBox(height: 20),
         pw.TableHelper.fromTextArray(
-          headers: const ['Item', 'Qty', 'Rate', 'GST', 'Amount'],
+          headers: const ['Item', 'Qty', 'Rate', 'Discount', 'GST', 'Amount'],
           data: detail.items
               .map(
                 (item) => [
                   item['description'],
-                  '${item['quantity']} ${item['unit']}',
+                  '${_quantity(item['quantity'])} ${_unit(item['unit'], item['quantity'])}',
                   _money(item['unit_price_in_paise']),
-                  '${(item['tax_rate_basis_points'] as int) / 100}%',
+                  (item['discount_in_paise'] as int) > 0
+                      ? '-${_money(item['discount_in_paise'])}'
+                      : '-',
+                  '${_quantity((item['tax_rate_basis_points'] as int) / 100)}%',
                   _money(
                     (item['taxable_in_paise'] as int) +
                         (item['tax_in_paise'] as int),
@@ -116,10 +119,15 @@ Future<Uint8List> buildInvoicePdf(InvoiceDetail detail) async {
             child: pw.Column(
               children: [
                 _totalRow('Subtotal', _money(invoice['subtotal_in_paise'])),
-                if ((invoice['discount_in_paise'] as int) > 0)
+                if (((invoice['line_discount_in_paise'] as int?) ?? 0) > 0)
                   _totalRow(
-                    'Discount',
-                    '- ${_money(invoice['discount_in_paise'])}',
+                    'Product discounts',
+                    '- ${_money(invoice['line_discount_in_paise'])}',
+                  ),
+                if (((invoice['overall_discount_in_paise'] as int?) ?? 0) > 0)
+                  _totalRow(
+                    'Overall discount (${_quantity(invoice['overall_discount_percent'])}%)',
+                    '- ${_money(invoice['overall_discount_in_paise'])}',
                   ),
                 _totalRow('GST', _money(invoice['tax_in_paise'])),
                 pw.Divider(),
@@ -179,4 +187,18 @@ Future<void> printInvoice(InvoiceDetail detail) async {
     name: detail.invoice['invoice_number'] as String,
     onLayout: (_) => buildInvoicePdf(detail),
   );
+}
+
+String _quantity(Object? value) {
+  final number = (value as num?)?.toDouble() ?? 0;
+  if (number == number.roundToDouble()) return '${number.toInt()}';
+  return number.toStringAsFixed(2).replaceFirst(RegExp(r'0+$'), '');
+}
+
+String _unit(Object? value, Object? quantity) {
+  final unit = '$value'.trim();
+  if (unit.isEmpty || double.tryParse(unit) != null) {
+    return (quantity as num?)?.toDouble() == 1 ? 'item' : 'items';
+  }
+  return unit;
 }

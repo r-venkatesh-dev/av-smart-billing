@@ -23,6 +23,7 @@ class PosScreenState extends State<PosScreen> {
   String query = '';
   bool loading = true;
   Object? loadError;
+  int heldCount = 0;
 
   @override
   void initState() {
@@ -44,13 +45,18 @@ class PosScreenState extends State<PosScreen> {
       });
     }
     try {
-      final value = await widget.controller.database.products();
+      final results = await Future.wait([
+        widget.controller.database.products(),
+        widget.controller.database.heldBills(),
+      ]);
+      final value = results[0] as List<Product>;
       if (mounted) {
         setState(() {
           products = value
               .where((item) => item.active && item.stockQuantity > 0)
               .toList();
           loading = false;
+          heldCount = (results[1] as List<HeldBillSummary>).length;
         });
       }
     } catch (error) {
@@ -71,13 +77,15 @@ class PosScreenState extends State<PosScreen> {
       if (existing.quantity >= product.stockQuantity) {
         return showMessage(
           context,
-          'Only ${product.stockQuantity} ${product.unit} available.',
+          'Only ${formatQuantity(product.stockQuantity)} ${readableUnit(product.unit, quantity: product.stockQuantity)} available.',
           error: true,
         );
       }
       existing.quantity++;
     } else {
-      cart.add(CartLine(product: product));
+      cart.add(
+        CartLine(product: product, discountPercent: product.discountPercent),
+      );
     }
     setState(() {});
   }
@@ -128,37 +136,44 @@ class PosScreenState extends State<PosScreen> {
       return;
     }
     if (!mounted) return;
-    final reviewCart = cart
-        .map(
-          (line) => CartLine(
-            product: line.product,
-            quantity: line.quantity,
-            discountPercent: line.discountPercent,
-          ),
-        )
-        .toList();
+    final business = await widget.controller.database.getBusiness();
+    if (!mounted) return;
     final id = await showModalBottomSheet<String>(
       context: context,
       isScrollControlled: true,
       showDragHandle: true,
       builder: (_) => CheckoutSheet(
-        cart: reviewCart,
+        cart: cart,
         customers: customers,
-        onSave: (customer, name, phone, payment) =>
+        paymentQrPath: business['payment_qr_path'] as String? ?? '',
+        onSave: (customer, name, phone, payment, overallDiscount) =>
             widget.controller.database.createInvoice(
               customer: customer,
               walkInName: name,
               walkInPhone: phone,
-              lines: reviewCart,
+              lines: cart,
               paymentMethod: payment,
+              overallDiscountPercent: overallDiscount,
             ),
+        onHold: (lines) async {
+          await widget.controller.database.holdBill(lines);
+          cart.clear();
+        },
+        onCancel: () {
+          if (mounted) setState(cart.clear);
+        },
       ),
     );
     if (!mounted) return;
     setState(() {});
-    if (id == null) return;
+    if (id == null) {
+      if (cart.isEmpty) await _load();
+      return;
+    }
+    widget.controller.markDataChanged();
     cart.clear();
     await _load();
+    await widget.controller.checkLowStock();
     if (!mounted) return;
     await Navigator.push(
       context,
@@ -167,6 +182,80 @@ class PosScreenState extends State<PosScreen> {
             InvoiceDetailScreen(controller: widget.controller, invoiceId: id),
       ),
     );
+  }
+
+  Future<void> _showHeldBills() async {
+    if (cart.isNotEmpty) {
+      showMessage(
+        context,
+        'Hold or cancel the current bill before resuming another bill.',
+        error: true,
+      );
+      return;
+    }
+    final bills = await widget.controller.database.heldBills();
+    if (!mounted) return;
+    if (bills.isEmpty) {
+      showMessage(context, 'There are no held bills.');
+      return;
+    }
+    final action = await showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      builder: (context) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 18),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                'Held bills',
+                style: Theme.of(
+                  context,
+                ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 10),
+              ...bills.map(
+                (bill) => Card(
+                  child: ListTile(
+                    leading: const Icon(Icons.pause_circle_outline),
+                    title: Text(bill.label),
+                    subtitle: Text('${bill.itemCount} product lines'),
+                    onTap: () => Navigator.pop(context, bill.id),
+                    trailing: IconButton(
+                      tooltip: 'Delete held bill',
+                      onPressed: () =>
+                          Navigator.pop(context, 'delete:${bill.id}'),
+                      icon: const Icon(Icons.delete_outline),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (action == null || !mounted) return;
+    if (action.startsWith('delete:')) {
+      await widget.controller.database.deleteHeldBill(action.substring(7));
+      await _load();
+      return;
+    }
+    final resumed = await widget.controller.database.takeHeldBill(action);
+    if (!mounted) return;
+    setState(() {
+      cart.addAll(resumed);
+      heldCount = (heldCount - 1).clamp(0, heldCount);
+    });
+    if (resumed.isEmpty) {
+      showMessage(
+        context,
+        'The held products are no longer active or in stock.',
+        error: true,
+      );
+    }
   }
 
   @override
@@ -180,7 +269,20 @@ class PosScreenState extends State<PosScreen> {
     }).toList();
     return Scaffold(
       drawer: widget.drawer,
-      appBar: AppBar(title: const Text('Quick Sell')),
+      appBar: AppBar(
+        title: const Text('Quick Sell'),
+        actions: [
+          IconButton(
+            onPressed: _showHeldBills,
+            tooltip: 'Held bills',
+            icon: Badge(
+              isLabelVisible: heldCount > 0,
+              label: Text('$heldCount'),
+              child: const Icon(Icons.pause_circle_outline),
+            ),
+          ),
+        ],
+      ),
       body: Column(
         children: [
           Padding(
@@ -211,30 +313,90 @@ class PosScreenState extends State<PosScreen> {
                     itemBuilder: (context, index) {
                       final product = matches[index];
                       return Card(
-                        child: ListTile(
+                        color: product.discountPercent > 0
+                            ? const Color(0xfffff8e7)
+                            : null,
+                        clipBehavior: Clip.antiAlias,
+                        child: InkWell(
                           onTap: () => _add(product),
-                          title: Text(
-                            product.name,
-                            style: const TextStyle(fontWeight: FontWeight.bold),
-                          ),
-                          subtitle: Text(
-                            '${product.sku} · ${product.stockQuantity} ${product.unit} available',
-                          ),
-                          trailing: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Text(
-                                money(product.priceInPaise),
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.bold,
+                          child: Padding(
+                            padding: const EdgeInsets.all(14),
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.center,
+                              children: [
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        product.name,
+                                        maxLines: 2,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 16,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 3),
+                                      Text(
+                                        'Product code: ${product.sku}',
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: TextStyle(
+                                          color: Colors.grey.shade700,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        stockLabel(
+                                          product.stockQuantity,
+                                          product.unit,
+                                        ),
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                      if (product.discountPercent > 0)
+                                        Padding(
+                                          padding: const EdgeInsets.only(
+                                            top: 3,
+                                          ),
+                                          child: Text(
+                                            'Offer: ${formatPercent(product.discountPercent)} discount',
+                                            style: TextStyle(
+                                              color: Colors.orange.shade900,
+                                              fontWeight: FontWeight.bold,
+                                            ),
+                                          ),
+                                        ),
+                                    ],
+                                  ),
                                 ),
-                              ),
-                              const SizedBox(width: 8),
-                              const Icon(
-                                Icons.add_circle,
-                                color: Color(0xff057c73),
-                              ),
-                            ],
+                                const SizedBox(width: 10),
+                                Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Text(
+                                      money(product.priceInPaise),
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 6),
+                                    const Icon(
+                                      Icons.add_circle,
+                                      color: Color(0xff057c73),
+                                      size: 30,
+                                    ),
+                                    const Text(
+                                      'Add',
+                                      style: TextStyle(fontSize: 11),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
                           ),
                         ),
                       );

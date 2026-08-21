@@ -19,16 +19,50 @@ class _CustomersScreenState extends State<CustomersScreen> {
       context: context,
       builder: (_) => CustomerEditorDialog(
         customer: customer,
-        onSave: widget.controller.database.saveCustomer,
+        onSave: widget.controller.saveCustomer,
       ),
     );
     if (mounted && saved == true) setState(() {});
   }
 
+  Future<void> _delete(Customer customer) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete customer?'),
+        content: Text(
+          'Delete ${customer.name}? Existing invoices will keep their customer details.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Keep'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(context).colorScheme.error,
+            ),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    try {
+      await widget.controller.deleteCustomer(customer.id);
+      if (mounted) setState(() {});
+    } catch (error) {
+      if (mounted) showMessage(context, errorMessage(error), error: true);
+    }
+  }
+
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(
-      title: const Text('Customers'),
+      title: Text(
+        widget.controller.isOnline ? 'Customers · Online' : 'Customers',
+      ),
       actions: [
         IconButton(
           onPressed: () => _edit(),
@@ -37,7 +71,7 @@ class _CustomersScreenState extends State<CustomersScreen> {
       ],
     ),
     body: FutureBuilder<List<Customer>>(
-      future: widget.controller.database.customers(),
+      future: widget.controller.customers(),
       builder: (context, snapshot) {
         if (snapshot.hasError) {
           return ErrorState(
@@ -78,7 +112,16 @@ class _CustomersScreenState extends State<CustomersScreen> {
                     customer.gstin,
                   ].where((value) => value.isNotEmpty).join(' · '),
                 ),
-                trailing: const Icon(Icons.chevron_right),
+                trailing: PopupMenuButton<String>(
+                  onSelected: (value) {
+                    if (value == 'edit') _edit(customer);
+                    if (value == 'delete') _delete(customer);
+                  },
+                  itemBuilder: (_) => const [
+                    PopupMenuItem(value: 'edit', child: Text('Edit')),
+                    PopupMenuItem(value: 'delete', child: Text('Delete')),
+                  ],
+                ),
               ),
             );
           },

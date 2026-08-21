@@ -19,23 +19,24 @@ class AppDatabase {
     final database = await selectedFactory.openDatabase(
       filePath ?? path.join(root, 'av-smartbilling-mobile.sqlite'),
       options: OpenDatabaseOptions(
-        version: 1,
+        version: 2,
         onCreate: (db, _) async {
           await db.execute(
-            '''create table business(id text primary key, company_name text not null, phone text not null default '', address text not null default '', gstin text not null default '', state_code text not null default '', invoice_prefix text not null default 'INV', next_invoice_number integer not null default 1, invoice_footer text not null default '')''',
+            '''create table business(id text primary key, company_name text not null, phone text not null default '', address text not null default '', gstin text not null default '', state_code text not null default '', invoice_prefix text not null default 'INV', next_invoice_number integer not null default 1, invoice_footer text not null default '', payment_qr_path text not null default '', low_stock_threshold real not null default 5)''',
           );
           await db.execute(
-            '''create table products(id text primary key, name text not null, sku text not null unique, barcode text unique, unit text not null default 'unit', price_in_paise integer not null check(price_in_paise >= 0), tax_rate_basis_points integer not null default 0, stock_quantity real not null default 0 check(stock_quantity >= 0), active integer not null default 1, created_at text not null, updated_at text not null)''',
+            '''create table products(id text primary key, name text not null, sku text not null unique, barcode text unique, unit text not null default 'unit', price_in_paise integer not null check(price_in_paise >= 0), tax_rate_basis_points integer not null default 0, discount_percent real not null default 0 check(discount_percent between 0 and 100), stock_quantity real not null default 0 check(stock_quantity >= 0), active integer not null default 1, created_at text not null, updated_at text not null)''',
           );
           await db.execute(
             '''create table customers(id text primary key, name text not null, phone text not null default '', address text not null default '', gstin text, created_at text not null, updated_at text not null)''',
           );
           await db.execute(
-            '''create table invoices(id text primary key, invoice_number text not null unique, customer_id text references customers(id), customer_name text not null, customer_phone text not null default '', customer_address text not null default '', customer_gstin text, issued_at text not null, status text not null, subtotal_in_paise integer not null, discount_in_paise integer not null, tax_in_paise integer not null, total_in_paise integer not null, payment_method text not null, created_at text not null)''',
+            '''create table invoices(id text primary key, invoice_number text not null unique, customer_id text references customers(id), customer_name text not null, customer_phone text not null default '', customer_address text not null default '', customer_gstin text, issued_at text not null, status text not null, subtotal_in_paise integer not null, discount_in_paise integer not null, line_discount_in_paise integer not null default 0, overall_discount_percent real not null default 0, overall_discount_in_paise integer not null default 0, tax_in_paise integer not null, total_in_paise integer not null, payment_method text not null, created_at text not null)''',
           );
           await db.execute(
-            '''create table invoice_items(id text primary key, invoice_id text not null references invoices(id) on delete cascade, product_id text not null references products(id), description text not null, sku text not null, unit text not null, quantity real not null, unit_price_in_paise integer not null, tax_rate_basis_points integer not null, discount_in_paise integer not null, taxable_in_paise integer not null, tax_in_paise integer not null)''',
+            '''create table invoice_items(id text primary key, invoice_id text not null references invoices(id) on delete cascade, product_id text not null references products(id), description text not null, sku text not null, unit text not null, quantity real not null, unit_price_in_paise integer not null, tax_rate_basis_points integer not null, discount_percent real not null default 0, discount_in_paise integer not null, taxable_in_paise integer not null, tax_in_paise integer not null)''',
           );
+          await _createHeldBillTables(db);
           await db.execute(
             'create index invoices_issued_idx on invoices(issued_at desc)',
           );
@@ -44,10 +45,51 @@ class AppDatabase {
             'company_name': 'My Business',
           });
         },
+        onUpgrade: (db, oldVersion, newVersion) async {
+          if (oldVersion < 2) {
+            await db.execute(
+              "alter table business add column payment_qr_path text not null default ''",
+            );
+            await db.execute(
+              'alter table business add column low_stock_threshold real not null default 5',
+            );
+            await db.execute(
+              'alter table products add column discount_percent real not null default 0',
+            );
+            await db.execute(
+              'alter table invoices add column line_discount_in_paise integer not null default 0',
+            );
+            await db.execute(
+              'alter table invoices add column overall_discount_percent real not null default 0',
+            );
+            await db.execute(
+              'alter table invoices add column overall_discount_in_paise integer not null default 0',
+            );
+            await db.execute(
+              'update invoices set line_discount_in_paise=discount_in_paise',
+            );
+            await db.execute(
+              'alter table invoice_items add column discount_percent real not null default 0',
+            );
+            await _createHeldBillTables(db);
+          }
+        },
       ),
     );
     await database.execute('pragma foreign_keys = on');
     return AppDatabase._(database);
+  }
+
+  static Future<void> _createHeldBillTables(Database db) async {
+    await db.execute(
+      '''create table if not exists held_bills(id text primary key, label text not null, created_at text not null)''',
+    );
+    await db.execute(
+      '''create table if not exists held_bill_items(id text primary key, held_bill_id text not null references held_bills(id) on delete cascade, product_id text not null references products(id) on delete cascade, quantity real not null check(quantity > 0), discount_percent real not null default 0)''',
+    );
+    await db.execute(
+      'create index if not exists held_bill_items_bill_idx on held_bill_items(held_bill_id)',
+    );
   }
 
   Future<void> initializeBusinessName(String customerName) async {
@@ -109,14 +151,20 @@ class AppDatabase {
     required String unit,
     required double price,
     required double taxRate,
+    required double discountPercent,
     required double stock,
   }) async {
+    final cleanUnit = unit.trim();
     if (name.trim().length < 2 ||
         sku.trim().isEmpty ||
+        cleanUnit.isEmpty ||
+        double.tryParse(cleanUnit) != null ||
         price < 0 ||
         stock < 0 ||
         taxRate < 0 ||
-        taxRate > 100) {
+        taxRate > 100 ||
+        discountPercent < 0 ||
+        discountPercent > 100) {
       throw Exception('Enter valid product details.');
     }
     final timestamp = DateTime.now().toUtc().toIso8601String();
@@ -125,9 +173,10 @@ class AppDatabase {
       'name': name.trim(),
       'sku': sku.trim().toUpperCase(),
       'barcode': barcode.trim().isEmpty ? null : barcode.trim(),
-      'unit': unit.trim().isEmpty ? 'unit' : unit.trim(),
+      'unit': cleanUnit,
       'price_in_paise': (price * 100).round(),
       'tax_rate_basis_points': (taxRate * 100).round(),
+      'discount_percent': discountPercent,
       'stock_quantity': stock,
       'active': 1,
       'created_at': timestamp,
@@ -138,6 +187,7 @@ class AppDatabase {
         await db.insert('products', row);
       } else {
         row.remove('created_at');
+        row.remove('active');
         await db.update('products', row, where: 'id=?', whereArgs: [id]);
       }
     } on DatabaseException catch (error) {
@@ -152,13 +202,33 @@ class AppDatabase {
     }
   }
 
-  Future<void> archiveProduct(String id) async {
+  Future<void> setProductActive(String id, bool active) async {
     await db.update(
       'products',
-      {'active': 0, 'updated_at': DateTime.now().toUtc().toIso8601String()},
+      {
+        'active': active ? 1 : 0,
+        'updated_at': DateTime.now().toUtc().toIso8601String(),
+      },
       where: 'id=?',
       whereArgs: [id],
     );
+  }
+
+  Future<void> deleteProduct(String id) async {
+    final used =
+        Sqflite.firstIntValue(
+          await db.rawQuery(
+            'select count(*) from invoice_items where product_id=?',
+            [id],
+          ),
+        ) ??
+        0;
+    if (used > 0) {
+      throw Exception(
+        'This product is part of an invoice and cannot be deleted. Mark it inactive instead.',
+      );
+    }
+    await db.delete('products', where: 'id=?', whereArgs: [id]);
   }
 
   Future<List<Customer>> customers() async => (await db.query(
@@ -194,6 +264,118 @@ class AppDatabase {
     }
   }
 
+  Future<void> deleteCustomer(String id) => db.transaction((txn) async {
+    await txn.update(
+      'invoices',
+      {'customer_id': null},
+      where: 'customer_id=?',
+      whereArgs: [id],
+    );
+    await txn.delete('customers', where: 'id=?', whereArgs: [id]);
+  });
+
+  Future<void> deleteInvoice(String id) => db.transaction((txn) async {
+    final items = await txn.query(
+      'invoice_items',
+      columns: ['product_id', 'quantity'],
+      where: 'invoice_id=?',
+      whereArgs: [id],
+    );
+    final timestamp = DateTime.now().toUtc().toIso8601String();
+    for (final item in items) {
+      await txn.rawUpdate(
+        'update products set stock_quantity=stock_quantity+?, updated_at=? where id=?',
+        [item['quantity'], timestamp, item['product_id']],
+      );
+    }
+    await txn.delete('invoices', where: 'id=?', whereArgs: [id]);
+  });
+
+  Future<List<Product>> lowStockProducts() async {
+    final business = await getBusiness();
+    final threshold = (business['low_stock_threshold'] as num).toDouble();
+    final rows = await db.query(
+      'products',
+      where: 'active=1 and stock_quantity<=?',
+      whereArgs: [threshold],
+      orderBy: 'stock_quantity, name collate nocase',
+    );
+    return rows.map(Product.fromMap).toList();
+  }
+
+  Future<String> holdBill(List<CartLine> lines) async {
+    if (lines.isEmpty) {
+      throw Exception('Add products before holding this bill.');
+    }
+    return db.transaction((txn) async {
+      final id = const Uuid().v4();
+      final createdAt = DateTime.now().toUtc();
+      await txn.insert('held_bills', {
+        'id': id,
+        'label':
+            'Held bill ${createdAt.toLocal().hour.toString().padLeft(2, '0')}:${createdAt.toLocal().minute.toString().padLeft(2, '0')}',
+        'created_at': createdAt.toIso8601String(),
+      });
+      for (final line in lines) {
+        await txn.insert('held_bill_items', {
+          'id': const Uuid().v4(),
+          'held_bill_id': id,
+          'product_id': line.product.id,
+          'quantity': line.quantity,
+          'discount_percent': line.discountPercent,
+        });
+      }
+      return id;
+    });
+  }
+
+  Future<List<HeldBillSummary>> heldBills() async {
+    final rows = await db.rawQuery(
+      '''select h.id, h.label, h.created_at, count(i.id) item_count
+         from held_bills h left join held_bill_items i on i.held_bill_id=h.id
+         group by h.id order by h.created_at desc''',
+    );
+    return rows
+        .map(
+          (row) => HeldBillSummary(
+            id: row['id'] as String,
+            label: row['label'] as String,
+            createdAt: DateTime.parse(row['created_at'] as String),
+            itemCount: (row['item_count'] as num).toInt(),
+          ),
+        )
+        .toList();
+  }
+
+  Future<List<CartLine>> takeHeldBill(String id) => db.transaction((txn) async {
+    final rows = await txn.rawQuery(
+      '''select p.*, i.quantity held_quantity, i.discount_percent held_discount
+         from held_bill_items i join products p on p.id=i.product_id
+         where i.held_bill_id=? and p.active=1 and p.stock_quantity>0''',
+      [id],
+    );
+    final lines = rows
+        .map((row) {
+          final product = Product.fromMap(row);
+          return CartLine(
+            product: product,
+            quantity: ((row['held_quantity'] as num).toDouble()).clamp(
+              0,
+              product.stockQuantity,
+            ),
+            discountPercent: (row['held_discount'] as num).toDouble(),
+          );
+        })
+        .where((line) => line.quantity > 0)
+        .toList();
+    await txn.delete('held_bills', where: 'id=?', whereArgs: [id]);
+    return lines;
+  });
+
+  Future<void> deleteHeldBill(String id) async {
+    await db.delete('held_bills', where: 'id=?', whereArgs: [id]);
+  }
+
   Future<DashboardStats> dashboard() async {
     final today = DateTime.now();
     final start = DateTime(
@@ -212,8 +394,12 @@ class AppDatabase {
     final productRow = await db.rawQuery(
       'select count(*) value from products where active=1',
     );
+    final business = await getBusiness();
+    final lowStockThreshold = (business['low_stock_threshold'] as num)
+        .toDouble();
     final lowRow = await db.rawQuery(
-      'select count(*) value from products where active=1 and stock_quantity<=5',
+      'select count(*) value from products where active=1 and stock_quantity<=?',
+      [lowStockThreshold],
     );
     return DashboardStats(
       todaySales: (todayRow.single['value'] as num).toInt(),
@@ -342,6 +528,7 @@ class AppDatabase {
     required String walkInPhone,
     required List<CartLine> lines,
     required String paymentMethod,
+    double overallDiscountPercent = 0,
   }) async {
     if (lines.isEmpty) throw Exception('Add at least one product.');
     if (customer == null && walkInName.trim().length < 2) {
@@ -388,12 +575,18 @@ class AppDatabase {
         0,
         (sum, item) => sum + item.amounts.subtotal,
       );
-      final discount = prepared.fold<int>(
-        0,
-        (sum, item) => sum + item.amounts.discount,
+      final bill = calculateBill(
+        lines: prepared.map(
+          (item) => (
+            amounts: item.amounts,
+            taxRateBasisPoints: item.product.taxRateBasisPoints,
+          ),
+        ),
+        overallDiscountPercent: overallDiscountPercent,
       );
-      final tax = prepared.fold<int>(0, (sum, item) => sum + item.amounts.tax);
-      final total = subtotal - discount + tax;
+      final discount = bill.discount;
+      final tax = bill.tax;
+      final total = bill.total;
       final id = const Uuid().v4();
       final issuedAt = DateTime.now().toUtc().toIso8601String();
       final number = business['next_invoice_number'] as int;
@@ -414,12 +607,21 @@ class AppDatabase {
         'status': paid ? 'PAID' : 'DUE',
         'subtotal_in_paise': subtotal,
         'discount_in_paise': discount,
+        'line_discount_in_paise': bill.lineDiscount,
+        'overall_discount_percent': overallDiscountPercent.clamp(0, 100),
+        'overall_discount_in_paise': bill.overallDiscount,
         'tax_in_paise': tax,
         'total_in_paise': total,
         'payment_method': paymentMethod,
         'created_at': issuedAt,
       });
       for (final item in prepared) {
+        final allocatedOverallDiscount =
+            (item.amounts.taxable * overallDiscountPercent.clamp(0, 100) / 100)
+                .round();
+        final taxable = item.amounts.taxable - allocatedOverallDiscount;
+        final itemTax = (taxable * item.product.taxRateBasisPoints / 10000)
+            .round();
         await txn.insert('invoice_items', {
           'id': const Uuid().v4(),
           'invoice_id': id,
@@ -430,9 +632,12 @@ class AppDatabase {
           'quantity': item.quantity,
           'unit_price_in_paise': item.product.priceInPaise,
           'tax_rate_basis_points': item.product.taxRateBasisPoints,
+          'discount_percent': item.amounts.subtotal == 0
+              ? 0
+              : item.amounts.discount * 100 / item.amounts.subtotal,
           'discount_in_paise': item.amounts.discount,
-          'taxable_in_paise': item.amounts.taxable,
-          'tax_in_paise': item.amounts.tax,
+          'taxable_in_paise': taxable,
+          'tax_in_paise': itemTax,
         });
         await txn.rawUpdate(
           'update products set stock_quantity=stock_quantity-?, updated_at=? where id=?',

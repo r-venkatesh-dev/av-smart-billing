@@ -5,12 +5,16 @@ import 'package:cryptography/cryptography.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:local_auth/local_auth.dart';
 
+String? validateNewAppPin(String? value) =>
+    RegExp(r'^\d{6}$').hasMatch(value ?? '') ? null : 'Enter exactly 6 digits.';
+
 class SecurityService {
   static const _storage = FlutterSecureStorage();
   static const _enabledKey = 'avsb_app_lock_enabled_v1';
   static const _biometricKey = 'avsb_app_lock_biometric_v1';
   static const _pinHashKey = 'avsb_app_lock_pin_hash_v1';
   static const _pinSaltKey = 'avsb_app_lock_pin_salt_v1';
+  static const _pinLengthKey = 'avsb_app_lock_pin_length_v1';
   final _auth = LocalAuthentication();
 
   Future<bool> get enabled async =>
@@ -18,6 +22,9 @@ class SecurityService {
 
   Future<bool> get biometricEnabled async =>
       await _storage.read(key: _biometricKey) == 'true';
+
+  Future<int?> get configuredPinLength async =>
+      int.tryParse(await _storage.read(key: _pinLengthKey) ?? '');
 
   Future<bool> get biometricAvailable async {
     try {
@@ -71,6 +78,7 @@ class SecurityService {
       _storage.delete(key: _biometricKey),
       _storage.delete(key: _pinHashKey),
       _storage.delete(key: _pinSaltKey),
+      _storage.delete(key: _pinLengthKey),
     ]);
   }
 
@@ -80,6 +88,7 @@ class SecurityService {
     await Future.wait([
       _storage.write(key: _pinSaltKey, value: base64UrlEncode(salt)),
       _storage.write(key: _pinHashKey, value: await _hash(pin, salt)),
+      _storage.write(key: _pinLengthKey, value: '${pin.length}'),
     ]);
   }
 
@@ -92,8 +101,9 @@ class SecurityService {
   }
 
   void _validatePin(String pin) {
-    if (!RegExp(r'^\d{4,6}$').hasMatch(pin)) {
-      throw Exception('PIN must contain 4 to 6 digits.');
+    final error = validateNewAppPin(pin);
+    if (error != null) {
+      throw Exception('PIN must contain exactly 6 digits.');
     }
   }
 }

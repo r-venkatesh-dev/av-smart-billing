@@ -12,6 +12,24 @@ class LineAmounts {
   int get total => taxable + tax;
 }
 
+class BillAmounts {
+  const BillAmounts({
+    required this.subtotal,
+    required this.lineDiscount,
+    required this.overallDiscount,
+    required this.tax,
+  });
+
+  final int subtotal;
+  final int lineDiscount;
+  final int overallDiscount;
+  final int tax;
+
+  int get discount => lineDiscount + overallDiscount;
+  int get taxable => subtotal - discount;
+  int get total => taxable + tax;
+}
+
 LineAmounts calculateLine({
   required int priceInPaise,
   required double quantity,
@@ -30,6 +48,37 @@ LineAmounts calculateLine({
     subtotal: subtotal,
     discount: discount,
     taxable: taxable,
+    tax: tax,
+  );
+}
+
+BillAmounts calculateBill({
+  required Iterable<({LineAmounts amounts, int taxRateBasisPoints})> lines,
+  double overallDiscountPercent = 0,
+}) {
+  final values = lines.toList();
+  final safeOverallDiscount = overallDiscountPercent.clamp(0, 100).toDouble();
+  final subtotal = values.fold<int>(
+    0,
+    (sum, line) => sum + line.amounts.subtotal,
+  );
+  final lineDiscount = values.fold<int>(
+    0,
+    (sum, line) => sum + line.amounts.discount,
+  );
+  var overallDiscount = 0;
+  var tax = 0;
+  for (final line in values) {
+    final allocated = (line.amounts.taxable * safeOverallDiscount / 100)
+        .round();
+    overallDiscount += allocated;
+    final taxable = line.amounts.taxable - allocated;
+    tax += (taxable * line.taxRateBasisPoints / 10000).round();
+  }
+  return BillAmounts(
+    subtotal: subtotal,
+    lineDiscount: lineDiscount,
+    overallDiscount: overallDiscount,
     tax: tax,
   );
 }

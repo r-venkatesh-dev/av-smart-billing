@@ -1,11 +1,19 @@
+import 'dart:async';
+import 'dart:io';
+
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
 
 import '../app.dart';
+import '../billing_mode_service.dart';
+import '../online_billing_service.dart';
+import '../ui_helpers.dart';
 import 'about_screen.dart';
 import 'cloud_backup_screen.dart';
 import 'customers_screen.dart';
 import 'dashboard_screen.dart';
 import 'invoices_screen.dart';
+import 'online_foundation_screen.dart';
 import 'pos_screen.dart';
 import 'products_screen.dart';
 import 'reports_screen.dart';
@@ -23,6 +31,117 @@ class HomeShell extends StatefulWidget {
 class _HomeShellState extends State<HomeShell> {
   final _sellKey = GlobalKey<PosScreenState>();
   int index = 0;
+  bool switchingMode = false;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.controller.isOnline) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _checkOnlineMode());
+    }
+  }
+
+  String _onlineError(Object error) =>
+      error is OnlineConnectionException ||
+          error is SocketException ||
+          error is TimeoutException ||
+          error is http.ClientException
+      ? 'Online Billing requires internet. Please connect to the internet and try again, or switch to Offline Billing.'
+      : errorMessage(error);
+
+  Future<void> _checkOnlineMode() async {
+    try {
+      await widget.controller.ensureOnlineReady();
+    } catch (error) {
+      if (!mounted) return;
+      final switchOffline = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Online Billing unavailable'),
+          content: Text(_onlineError(error)),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Stay in Online Mode'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Switch to Offline Billing'),
+            ),
+          ],
+        ),
+      );
+      if (switchOffline == true) {
+        await widget.controller.switchBillingMode(BillingMode.offline);
+      }
+    }
+  }
+
+  Future<void> _changeMode(BillingMode mode) async {
+    if (switchingMode || mode == widget.controller.billingMode) return;
+    final goingOnline = mode == BillingMode.online;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(
+          goingOnline
+              ? 'Switch to Online Billing?'
+              : 'Switch to Offline Billing?',
+        ),
+        content: Text(
+          goingOnline
+              ? 'Online Mode requires internet and uses the cloud Products and Customers. Your existing offline products, customers and invoices will remain safely on this phone.'
+              : 'Offline Mode uses only the records stored on this phone. Your online records will remain safely in the cloud.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Keep current mode'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: Text(goingOnline ? 'Switch Online' : 'Switch Offline'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    Navigator.of(context).pop();
+    setState(() => switchingMode = true);
+    if (goingOnline) {
+      showMessage(context, 'Checking internet and online billing access…');
+    }
+    try {
+      await widget.controller.switchBillingMode(mode);
+      if (mounted) {
+        Navigator.of(context).popUntil((route) => route.isFirst);
+        setState(() => index = 0);
+        showMessage(
+          context,
+          goingOnline
+              ? 'Online Mode enabled. Products and Customers now use cloud data.'
+              : 'Offline Mode enabled. Using records stored on this phone.',
+        );
+      }
+    } catch (error) {
+      if (!mounted) return;
+      await showDialog<void>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Could not enable Online Billing'),
+          content: Text(_onlineError(error)),
+          actions: [
+            FilledButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('OK'),
+            ),
+          ],
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => switchingMode = false);
+    }
+  }
 
   void _selectPage(int value) => setState(() => index = value);
 
@@ -49,11 +168,25 @@ class _HomeShellState extends State<HomeShell> {
     },
     onSettings: () {
       Navigator.pop(context);
-      _openPage(SettingsScreen(controller: widget.controller));
+      _openPage(
+        widget.controller.isOnline
+            ? OnlineFoundationScreen(
+                title: 'Online Business Settings',
+                drawer: _drawer(-1),
+              )
+            : SettingsScreen(controller: widget.controller),
+      );
     },
     onReports: () {
       Navigator.pop(context);
-      _openPage(ReportsScreen(controller: widget.controller));
+      _openPage(
+        widget.controller.isOnline
+            ? OnlineFoundationScreen(
+                title: 'Online Reports & Exports',
+                drawer: _drawer(-1),
+              )
+            : ReportsScreen(controller: widget.controller),
+      );
     },
     onCloudBackup: () {
       Navigator.pop(context);
@@ -67,28 +200,47 @@ class _HomeShellState extends State<HomeShell> {
       Navigator.pop(context);
       _openPage(const AboutScreen());
     },
+    onModeChanged: _changeMode,
+    switchingMode: switchingMode,
   );
 
   @override
   Widget build(BuildContext context) {
+    final online = widget.controller.isOnline;
     final pages = [
-      DashboardScreen(
-        controller: widget.controller,
-        onSell: () => _selectPage(1),
-        drawer: _drawer(0),
-      ),
-      PosScreen(
-        key: _sellKey,
-        controller: widget.controller,
-        drawer: _drawer(1),
-      ),
+      online
+          ? OnlineFoundationScreen(title: 'Online Billing', drawer: _drawer(0))
+          : DashboardScreen(
+              controller: widget.controller,
+              revision: widget.controller.dataRevision,
+              onSell: () => _selectPage(1),
+              drawer: _drawer(0),
+            ),
+      online
+          ? OnlineFoundationScreen(title: 'Online Sell', drawer: _drawer(1))
+          : PosScreen(
+              key: _sellKey,
+              controller: widget.controller,
+              drawer: _drawer(1),
+            ),
       ProductsScreen(controller: widget.controller, drawer: _drawer(2)),
-      InvoicesScreen(controller: widget.controller, drawer: _drawer(3)),
+      online
+          ? OnlineFoundationScreen(title: 'Online Invoices', drawer: _drawer(3))
+          : InvoicesScreen(
+              controller: widget.controller,
+              revision: widget.controller.dataRevision,
+              drawer: _drawer(3),
+            ),
     ];
     return Scaffold(
       body: IndexedStack(index: index, children: pages),
       floatingActionButton: FloatingActionButton(
-        onPressed: _scan,
+        onPressed: online
+            ? () => showMessage(
+                context,
+                'Online selling will be available in the next stage.',
+              )
+            : _scan,
         tooltip: 'Scan product barcode',
         child: const Icon(Icons.qr_code_scanner, size: 28),
       ),
@@ -221,6 +373,8 @@ class _AppDrawer extends StatelessWidget {
     required this.onCloudBackup,
     required this.onSecurity,
     required this.onAbout,
+    required this.onModeChanged,
+    required this.switchingMode,
   });
 
   final AppController controller;
@@ -232,6 +386,8 @@ class _AppDrawer extends StatelessWidget {
   final VoidCallback onCloudBackup;
   final VoidCallback onSecurity;
   final VoidCallback onAbout;
+  final ValueChanged<BillingMode> onModeChanged;
+  final bool switchingMode;
 
   @override
   Widget build(BuildContext context) => Drawer(
@@ -333,6 +489,65 @@ class _AppDrawer extends StatelessWidget {
                   onTap: onSecurity,
                 ),
                 const Divider(indent: 20, endIndent: 20),
+                Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 18,
+                    vertical: 4,
+                  ),
+                  child: Container(
+                    padding: const EdgeInsets.fromLTRB(14, 8, 8, 8),
+                    decoration: BoxDecoration(
+                      color: controller.isOnline
+                          ? const Color(0xffe6f2f0)
+                          : Colors.grey.shade100,
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          controller.isOnline
+                              ? Icons.cloud_done_outlined
+                              : Icons.phone_android_outlined,
+                          color: controller.isOnline
+                              ? Theme.of(context).colorScheme.primary
+                              : Colors.grey.shade700,
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                controller.isOnline
+                                    ? 'Online Mode'
+                                    : 'Offline Mode',
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              Text(
+                                controller.isOnline
+                                    ? 'Cloud Products & Customers'
+                                    : 'Saved on this phone',
+                                style: Theme.of(context).textTheme.bodySmall,
+                              ),
+                            ],
+                          ),
+                        ),
+                        Switch.adaptive(
+                          value: controller.isOnline,
+                          onChanged: switchingMode
+                              ? null
+                              : (value) => onModeChanged(
+                                  value
+                                      ? BillingMode.online
+                                      : BillingMode.offline,
+                                ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
                 _DrawerItem(
                   icon: Icons.info_outline,
                   label: 'About App',
