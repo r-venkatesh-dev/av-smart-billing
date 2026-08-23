@@ -231,6 +231,16 @@ class AppController extends ChangeNotifier {
     session = await licenses.validate(current);
   }
 
+  Future<void> changeActivationKey() async {
+    await licenses.clearSession();
+    await billingModes.save(BillingMode.offline);
+    session = null;
+    billingMode = BillingMode.offline;
+    onlineStatus = null;
+    locked = false;
+    notifyListeners();
+  }
+
   Future<bool> unlockWithPin(String pin) async {
     if (!await security.verifyPin(pin)) return false;
     locked = false;

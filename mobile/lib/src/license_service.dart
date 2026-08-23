@@ -34,6 +34,10 @@ class LicenseService {
     }
   }
 
+  /// Removes only the signed license grant. The installation identity is kept
+  /// so this phone remains recognizable when another key is activated.
+  Future<void> clearSession() => _storage.delete(key: _sessionKey);
+
   Future<String> _fingerprint() async {
     var id = await _storage.read(key: _installationKey);
     if (id == null) {

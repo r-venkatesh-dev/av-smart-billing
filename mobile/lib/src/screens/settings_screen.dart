@@ -60,6 +60,43 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
+  Future<void> _changeActivationKey() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Change activation key?'),
+        content: const Text(
+          'This will sign out the current license and return to the activation screen. Products, customers, invoices, held bills and business settings stored on this phone will remain safe.\n\nAny items in the current unheld sale may be cleared. Internet is required to activate the new key.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Keep current key'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(context).colorScheme.error,
+            ),
+            child: const Text('Change key'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    setState(() => busy = true);
+    try {
+      await widget.controller.changeActivationKey();
+      if (mounted) {
+        Navigator.of(context).popUntil((route) => route.isFirst);
+      }
+    } catch (error) {
+      if (mounted) showMessage(context, errorMessage(error), error: true);
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
+  }
+
   Future<void> _uploadQr() async {
     if (qrBusy) return;
     setState(() => qrBusy = true);
@@ -223,6 +260,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
                               )
                             : const Icon(Icons.sync),
                         label: const Text('Validate license online'),
+                      ),
+                      const SizedBox(height: 10),
+                      OutlinedButton.icon(
+                        onPressed: busy ? null : _changeActivationKey,
+                        icon: const Icon(Icons.key_outlined),
+                        label: const Text('Change activation key'),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: Theme.of(context).colorScheme.error,
+                          side: BorderSide(
+                            color: Theme.of(context).colorScheme.error,
+                          ),
+                        ),
                       ),
                     ],
                   ),

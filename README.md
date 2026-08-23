@@ -132,6 +132,8 @@ The unauthenticated purchase flow is available at `/subscribe`. Configure these 
 
 In Razorpay, enable automatic capture and register the live webhook URL `https://av-smart-billing.vercel.app/api/webhooks/razorpay` for `payment.captured`, `payment.failed`, and `order.paid`. The server also verifies Checkout signatures, fetches the payment, confirms its order/amount/currency, and explicitly captures an authorized payment before generating a license. Never add the key secret or webhook secret to a `NEXT_PUBLIC_` variable.
 
+The root website and its About, Contact, Privacy, Terms, Refund, Products and Subscription pages are public. Configure the merchant information displayed on the Contact and policy pages with `NEXT_PUBLIC_BUSINESS_LEGAL_NAME`, `NEXT_PUBLIC_SUPPORT_EMAIL`, `NEXT_PUBLIC_SUPPORT_PHONE`, and `NEXT_PUBLIC_BUSINESS_ADDRESS`. These values are intentionally public; do not put private credentials in them. Admin sign-in remains at `/login`.
+
 ### Test license activation on localhost
 
 1. Sign in as an `OWNER` or `ADMIN` and create an active customer and plan.
