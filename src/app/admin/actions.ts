@@ -8,6 +8,7 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { customerSchema, planSchema, platformSettingsSchema } from "@/lib/validation/admin";
 import { generateLicenseSchema } from "@/lib/validation/license";
 import { generateLicenseKey, hashLicenseKey, licenseKeyHint } from "@/lib/license-key";
+import { encryptLicenseKey } from "@/lib/license-key-vault";
 import { rupeesToPaise } from "@/lib/money";
 
 export interface EntityFormState {
@@ -80,7 +81,14 @@ export async function deleteCustomer(id: string): Promise<DeleteCustomerResult> 
 }
 
 function planInput(formData: FormData) {
-  return planSchema.safeParse({ name: formData.get("name"), description: formData.get("description"), maxDevices: formData.get("maxDevices"), validationWindowDays: formData.get("validationWindowDays"), priceInRupees: formData.get("priceInRupees"), interval: formData.get("interval"), status: formData.get("status") });
+  const seen = new Set<string>();
+  const features = formData.getAll("features").map(String).map((feature) => feature.trim()).filter((feature) => {
+    const normalized = feature.toLocaleLowerCase("en-IN");
+    if (!feature || seen.has(normalized)) return false;
+    seen.add(normalized);
+    return true;
+  });
+  return planSchema.safeParse({ name: formData.get("name"), description: formData.get("description"), features, allowOnlineBilling: formData.get("allowOnlineBilling") === "on", allowCloudBackup: formData.get("allowCloudBackup") === "on", isPubliclyVisible: formData.get("isPubliclyVisible") === "on", maxDevices: formData.get("maxDevices"), validationWindowDays: formData.get("validationWindowDays"), priceInRupees: formData.get("priceInRupees"), interval: formData.get("interval"), status: formData.get("status") });
 }
 
 export async function createPlan(_state: EntityFormState, formData: FormData): Promise<EntityFormState> {
@@ -88,10 +96,12 @@ export async function createPlan(_state: EntityFormState, formData: FormData): P
   const parsed = planInput(formData);
   if (!parsed.success) return { errors: parsed.error.flatten().fieldErrors };
   const supabase = await createSupabaseServerClient();
-  const { data, error } = await supabase.from("plans").insert({ name: parsed.data.name, description: parsed.data.description, max_devices: parsed.data.maxDevices, validation_window_days: parsed.data.validationWindowDays, price_in_paise: rupeesToPaise(parsed.data.priceInRupees), interval: parsed.data.interval, status: parsed.data.status }).select().single();
+  const { data, error } = await supabase.from("plans").insert({ name: parsed.data.name, description: parsed.data.description, features: parsed.data.features, allow_online_billing: parsed.data.allowOnlineBilling, allow_cloud_backup: parsed.data.allowCloudBackup, is_publicly_visible: parsed.data.isPubliclyVisible, max_devices: parsed.data.maxDevices, validation_window_days: parsed.data.validationWindowDays, price_in_paise: rupeesToPaise(parsed.data.priceInRupees), interval: parsed.data.interval, status: parsed.data.status }).select().single();
   if (error) return { message: error.message };
   const audit = await supabase.from("audit_logs").insert({ actor_id: actor.id, action: "PLAN_CREATED", entity_type: "plan", entity_id: data.id, after_data: data });
   if (audit.error) throw new Error(`Audit write failed: ${audit.error.message}`);
+  revalidatePath("/plans");
+  revalidatePath("/subscribe");
   redirect("/admin/plans");
 }
 
@@ -102,10 +112,12 @@ export async function updatePlan(id: string, _state: EntityFormState, formData: 
   const supabase = await createSupabaseServerClient();
   const before = await supabase.from("plans").select().eq("id", id).single();
   if (before.error) return { message: before.error.message };
-  const { data, error } = await supabase.from("plans").update({ name: parsed.data.name, description: parsed.data.description, max_devices: parsed.data.maxDevices, validation_window_days: parsed.data.validationWindowDays, price_in_paise: rupeesToPaise(parsed.data.priceInRupees), interval: parsed.data.interval, status: parsed.data.status }).eq("id", id).select().single();
+  const { data, error } = await supabase.from("plans").update({ name: parsed.data.name, description: parsed.data.description, features: parsed.data.features, allow_online_billing: parsed.data.allowOnlineBilling, allow_cloud_backup: parsed.data.allowCloudBackup, is_publicly_visible: parsed.data.isPubliclyVisible, max_devices: parsed.data.maxDevices, validation_window_days: parsed.data.validationWindowDays, price_in_paise: rupeesToPaise(parsed.data.priceInRupees), interval: parsed.data.interval, status: parsed.data.status }).eq("id", id).select().single();
   if (error) return { message: error.message };
   const audit = await supabase.from("audit_logs").insert({ actor_id: actor.id, action: "PLAN_UPDATED", entity_type: "plan", entity_id: id, before_data: before.data, after_data: data });
   if (audit.error) throw new Error(`Audit write failed: ${audit.error.message}`);
+  revalidatePath("/plans");
+  revalidatePath("/subscribe");
   redirect("/admin/plans");
 }
 
@@ -128,12 +140,12 @@ export async function createLicense(_state: EntityFormState, formData: FormData)
   const supabase = await createSupabaseServerClient();
   const [customer, plan] = await Promise.all([
     supabase.from("customers").select("id, company_name, status").eq("id", parsed.data.customerId).single(),
-    supabase.from("plans").select("id, name, max_devices, validation_window_days, status").eq("id", parsed.data.planId).single(),
+    supabase.from("plans").select("id, name, max_devices, validation_window_days, allow_online_billing, allow_cloud_backup, status").eq("id", parsed.data.planId).single(),
   ]);
   if (customer.error || customer.data.status !== "ACTIVE") return { message: "Select an active customer." };
   if (plan.error || plan.data.status !== "ACTIVE") return { message: "Select an active plan." };
   const key = generateLicenseKey();
-  const { data, error } = await supabase.from("licenses").insert({ customer_id: customer.data.id, plan_id: plan.data.id, license_key_hash: hashLicenseKey(key), license_key_hint: licenseKeyHint(key), max_devices: plan.data.max_devices, validation_window_days: plan.data.validation_window_days, expires_at: parsed.data.expiresAt, created_by: actor.id }).select("id, license_key_hint, status, expires_at").single();
+  const { data, error } = await supabase.from("licenses").insert({ customer_id: customer.data.id, plan_id: plan.data.id, license_key_hash: hashLicenseKey(key), license_key_hint: licenseKeyHint(key), license_key_ciphertext: encryptLicenseKey(key), max_devices: plan.data.max_devices, validation_window_days: plan.data.validation_window_days, allow_online_billing: plan.data.allow_online_billing, allow_cloud_backup: plan.data.allow_cloud_backup, expires_at: parsed.data.expiresAt, created_by: actor.id }).select("id, license_key_hint, status, expires_at").single();
   if (error) return { message: error.message };
   const audit = await supabase.from("audit_logs").insert({ actor_id: actor.id, action: "LICENSE_CREATED", entity_type: "license", entity_id: data.id, after_data: { ...data, customer_id: customer.data.id, plan_id: plan.data.id } });
   if (audit.error) throw new Error(`Audit write failed: ${audit.error.message}`);

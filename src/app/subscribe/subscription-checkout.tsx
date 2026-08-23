@@ -15,10 +15,14 @@ type Plan = {
   id: string;
   name: string;
   description: string;
+  features: string[];
+  allowOnlineBilling: boolean;
+  allowCloudBackup: boolean;
   maxDevices: number;
   validationWindowDays: number;
   priceInPaise: number;
-  interval: "MONTH" | "YEAR";
+  interval: "WEEK" | "MONTH" | "QUARTER" | "YEAR";
+  purchasable: boolean;
 };
 type Details = {
   companyName: string;
@@ -96,17 +100,20 @@ async function loadRazorpay() {
 export function SubscriptionCheckout({
   plans,
   plansUnavailable,
+  initialPlanId,
 }: {
   plans: Plan[];
   plansUnavailable: boolean;
+  initialPlanId?: string;
 }) {
   const router = useRouter();
   const [step, setStep] = useState<"DETAILS" | "PLAN" | "SUCCESS">("DETAILS");
   const [details, setDetails] = useState<Details>(emptyDetails);
-  const [selectedPlanId, setSelectedPlanId] = useState( "");
+  const [selectedPlanId, setSelectedPlanId] = useState(initialPlanId ?? "");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [licenseKey, setLicenseKey] = useState("");
+  const [licenseExpiresAt, setLicenseExpiresAt] = useState("");
   const [copied, setCopied] = useState(false);
   const selectedPlan = useMemo(
     () => plans.find((plan) => plan.id === selectedPlanId),
@@ -140,7 +147,7 @@ export function SubscriptionCheckout({
   }
 
   async function pay() {
-    if (!selectedPlan) return;
+    if (!selectedPlan?.purchasable) return;
     setBusy(true);
     setMessage("");
     try {
@@ -196,6 +203,7 @@ export function SubscriptionCheckout({
             const result = (await verification.json()) as {
               message?: string;
               licenseKey?: string;
+              expiresAt?: string;
             };
             if (!verification.ok || !result.licenseKey) {
               setMessage(
@@ -206,6 +214,7 @@ export function SubscriptionCheckout({
               return;
             }
             setLicenseKey(result.licenseKey);
+            setLicenseExpiresAt(result.expiresAt ?? "");
             setStep("SUCCESS");
             setMessage("");
           } catch {
@@ -259,6 +268,7 @@ export function SubscriptionCheckout({
       )
     ) {
       setLicenseKey("");
+      setLicenseExpiresAt("");
       router.push("/products");
     }
   }
@@ -288,6 +298,11 @@ export function SubscriptionCheckout({
           <code className="mt-4 block select-all break-all text-center font-mono text-2xl font-black tracking-[.08em] text-[#26272a] sm:text-3xl">
             {licenseKey}
           </code>
+          {licenseExpiresAt ? (
+            <p className="mt-3 text-center text-sm font-semibold text-amber-950">
+              License valid until {new Intl.DateTimeFormat("en-IN", { day: "2-digit", month: "long", year: "numeric" }).format(new Date(licenseExpiresAt))}
+            </p>
+          ) : null}
           <button
             type="button"
             onClick={copyKey}
@@ -404,10 +419,12 @@ export function SubscriptionCheckout({
                 <button
                   type="button"
                   key={plan.id}
-                  onClick={() => setSelectedPlanId(plan.id)}
-                  className={`relative border p-4 text-left transition ${selectedPlanId === plan.id ? "border-[#057c73] bg-[#e6f2f0] ring-1 ring-[#057c73]" : "border-[#dfe3e1] hover:border-[#8a908d]"}`}
+                  onClick={() => plan.purchasable && setSelectedPlanId(plan.id)}
+                  disabled={!plan.purchasable}
+                  className={`relative border p-4 text-left transition disabled:cursor-not-allowed disabled:bg-[#f4f5f4] disabled:opacity-75 ${selectedPlanId === plan.id ? "border-[#057c73] bg-[#e6f2f0] ring-1 ring-[#057c73]" : "border-[#dfe3e1] hover:border-[#8a908d]"}`}
                 >
                   <span className="block text-xl font-bold">{plan.name}</span>
+                  {!plan.purchasable ? <span className="mt-1 inline-block bg-[#e6f2f0] px-2 py-1 text-[9px] font-bold uppercase tracking-[.1em] text-[#057c73]">Coming soon</span> : null}
                   <span className="mt-1 block text-xs leading-5 text-[#6d716f]">
                     {plan.description}
                   </span>
@@ -421,6 +438,19 @@ export function SubscriptionCheckout({
                     {plan.maxDevices} device{plan.maxDevices === 1 ? "" : "s"} ·{" "}
                     {plan.validationWindowDays}-day offline validation
                   </span>
+                  <span className="mt-1 block text-xs font-medium text-[#475467]">
+                    {plan.allowOnlineBilling ? "Offline + Online billing" : "Offline billing only"} · {plan.allowCloudBackup ? "Cloud backup" : "No cloud backup"}
+                  </span>
+                  {plan.features.length ? (
+                    <ul className="mt-3 space-y-1.5 border-t border-[#dfe3e1] pt-3 text-xs text-[#475467]">
+                      {plan.features.map((feature) => (
+                        <li key={feature} className="flex gap-1.5">
+                          <Check size={13} className="mt-0.5 shrink-0 text-[#057c73]" />
+                          {feature}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : null}
                   {selectedPlanId === plan.id ? (
                     <CheckCircle2
                       className="absolute right-4 top-4 text-[#057c73]"
@@ -434,9 +464,9 @@ export function SubscriptionCheckout({
               <p className="mt-4 bg-rose-50 p-3 text-sm text-rose-700">
                 Plans are temporarily unavailable. Please try again later.
               </p>
-            ) : !plans.length ? (
+            ) : !plans.some((plan) => plan.purchasable) ? (
               <p className="mt-4 bg-amber-50 p-3 text-sm text-amber-800">
-                No online purchase plan is currently available.
+                The displayed plans are coming soon and are not available for purchase yet.
               </p>
             ) : null}
             {message ? (
@@ -456,7 +486,7 @@ export function SubscriptionCheckout({
               <button
                 type="button"
                 onClick={pay}
-                disabled={busy || !selectedPlan}
+                disabled={busy || !selectedPlan?.purchasable}
                 className="flex h-12 items-center justify-center gap-2 bg-[#057c73] px-7 text-xs font-bold uppercase tracking-[.1em] text-white disabled:opacity-50"
               >
                 {busy ? (

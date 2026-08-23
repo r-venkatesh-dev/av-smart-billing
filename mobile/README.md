@@ -20,7 +20,7 @@ Android-first, offline billing companion for AV Smartbilling. Products, customer
 Cloud restore and multi-device synchronization remain intentionally outside this milestone. The restore screen is included as a disabled preview for a later phase.
 
 The selected master artwork for the Android launcher icon is stored at
-`assets/branding/av-smartbilling-icon-concept-3.png`. Android density and
+`assets/branding/app-logo.png`. Android density and
 adaptive-icon resources are generated from that master.
 
 ## Run

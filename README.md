@@ -116,10 +116,11 @@ Manual smoke test:
 9. Apply `supabase/migrations/202608090001_pos_inventory_and_backup_history.sql`.
 10. Apply `supabase/migrations/202608090002_product_delete_semantics.sql`.
 11. Apply `supabase/migrations/202608230001_public_subscription_checkout.sql`.
-12. Create the first Auth user, then insert its UUID in `public.profiles` with the `OWNER` role.
-13. Sign in and open `/billing/settings` to create the first browser billing workspace if it is still needed.
+12. Apply `supabase/migrations/202608230002_plan_features.sql`.
+13. Create the first Auth user, then insert its UUID in `public.profiles` with the `OWNER` role.
+14. Sign in and open `/billing/settings` to create the first browser billing workspace if it is still needed.
 
-`SUPABASE_SERVICE_ROLE_KEY` and `LICENSE_SIGNING_PRIVATE_KEY` are server-only. Never expose them with a `NEXT_PUBLIC_` prefix or ship them in a browser/Electron bundle.
+`SUPABASE_SERVICE_ROLE_KEY`, `LICENSE_SIGNING_PRIVATE_KEY`, and `LICENSE_KEY_ENCRYPTION_KEY` are server-only. Never expose them with a `NEXT_PUBLIC_` prefix or ship them in a browser/Electron bundle. Generate the license recovery key with `openssl rand -hex 32`, store the same value in every production deployment, and back it up securely; changing or losing it makes stored encrypted license keys unrecoverable.
 
 ### Razorpay subscription checkout
 
@@ -132,7 +133,7 @@ The unauthenticated purchase flow is available at `/subscribe`. Configure these 
 
 In Razorpay, enable automatic capture and register the live webhook URL `https://av-smart-billing.vercel.app/api/webhooks/razorpay` for `payment.captured`, `payment.failed`, and `order.paid`. The server also verifies Checkout signatures, fetches the payment, confirms its order/amount/currency, and explicitly captures an authorized payment before generating a license. Never add the key secret or webhook secret to a `NEXT_PUBLIC_` variable.
 
-The root website and its About, Contact, Privacy, Terms, Refund, Products and Subscription pages are public. Configure the merchant information displayed on the Contact and policy pages with `NEXT_PUBLIC_BUSINESS_LEGAL_NAME`, `NEXT_PUBLIC_SUPPORT_EMAIL`, `NEXT_PUBLIC_SUPPORT_PHONE`, and `NEXT_PUBLIC_BUSINESS_ADDRESS`. These values are intentionally public; do not put private credentials in them. Admin sign-in remains at `/login`.
+The root website and its About, Contact, Privacy, Terms, Refund, Products, Plans and Subscription pages are public. Public `/plans` and `/subscribe` read active, paid plans and their optional feature points directly from Supabase. Configure the merchant information displayed on the Contact and policy pages with `NEXT_PUBLIC_BUSINESS_LEGAL_NAME`, `NEXT_PUBLIC_SUPPORT_EMAIL`, `NEXT_PUBLIC_SUPPORT_PHONE`, and `NEXT_PUBLIC_BUSINESS_ADDRESS`. These values are intentionally public; do not put private credentials in them. Admin sign-in remains at `/login`.
 
 ### Test license activation on localhost
 

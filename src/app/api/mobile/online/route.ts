@@ -59,7 +59,7 @@ async function authorize(request: Request) {
   const [license, device] = await Promise.all([
     supabase
       .from("licenses")
-      .select("created_by, status, expires_at, customers(status), plans(status)")
+      .select("created_by, status, expires_at, allow_online_billing, customers(status), plans(status, allow_online_billing)")
       .eq("id", grant.licenseId)
       .maybeSingle(),
     supabase
@@ -83,6 +83,9 @@ async function authorize(request: Request) {
     device.data.license_id === grant.licenseId;
   if (!valid || !license.data?.created_by) {
     throw failure("This license or device is no longer active.", 403);
+  }
+  if (!license.data.allow_online_billing || plan?.allow_online_billing !== true) {
+    throw failure("Online billing is not included in this plan. Upgrade your plan to continue.", 403);
   }
 
   const business = await supabase

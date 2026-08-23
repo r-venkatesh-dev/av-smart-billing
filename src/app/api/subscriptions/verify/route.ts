@@ -1,5 +1,6 @@
 import { captureRazorpayPayment, getRazorpayEnv, getRazorpayPayment, verifyCheckoutSignature } from "@/lib/razorpay";
 import { generateLicenseKey, hashLicenseKey, licenseKeyHint } from "@/lib/license-key";
+import { encryptLicenseKey } from "@/lib/license-key-vault";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { subscriptionVerificationSchema } from "@/lib/validation/subscription";
 
@@ -7,8 +8,11 @@ export const runtime = "nodejs";
 
 function expiryFor(interval: string) {
   const expiry = new Date();
-  if (interval === "MONTH") expiry.setMonth(expiry.getMonth() + 1);
-  else expiry.setFullYear(expiry.getFullYear() + 1);
+  if (interval === "WEEK") expiry.setDate(expiry.getDate() + 7);
+  else if (interval === "MONTH") expiry.setMonth(expiry.getMonth() + 1);
+  else if (interval === "QUARTER") expiry.setMonth(expiry.getMonth() + 3);
+  else if (interval === "YEAR") expiry.setFullYear(expiry.getFullYear() + 1);
+  else throw new Error("Unsupported plan interval");
   return expiry.toISOString();
 }
 
@@ -72,6 +76,8 @@ export async function POST(request: Request) {
     if (result?.already_completed) {
       return Response.json({ ok: false, message: "The activation key for this payment was already issued. Contact support if you did not save it." }, { status: 409 });
     }
+    const protectedKey = await supabase.from("licenses").update({ license_key_ciphertext: encryptLicenseKey(key) }).eq("id", result?.license_id).is("license_key_ciphertext", null);
+    if (protectedKey.error) throw new Error(protectedKey.error.message);
     return Response.json({ ok: true, licenseKey: key, expiresAt }, { headers: { "Cache-Control": "no-store" } });
   } catch (verificationError) {
     console.error("Subscription payment finalization failed", verificationError);

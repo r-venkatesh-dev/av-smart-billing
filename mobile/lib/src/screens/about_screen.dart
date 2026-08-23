@@ -14,7 +14,7 @@ class AboutScreen extends StatelessWidget {
           child: ClipRRect(
             borderRadius: BorderRadius.circular(28),
             child: Image.asset(
-              'assets/branding/av-smartbilling-icon-concept-3.png',
+              'assets/branding/app-logo.png',
               width: 112,
               height: 112,
             ),

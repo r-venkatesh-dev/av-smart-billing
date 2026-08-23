@@ -113,6 +113,8 @@ class LicenseService {
       planName: grant['planName'] as String,
       expiresAt: DateTime.parse(grant['expiresAt'] as String),
       validUntil: DateTime.parse(signed['validUntil'] as String),
+      allowOnlineBilling: grant['allowOnlineBilling'] as bool? ?? true,
+      allowCloudBackup: grant['allowCloudBackup'] as bool? ?? true,
     );
     await _verify(session);
     await _storage.write(key: _sessionKey, value: jsonEncode(session.toJson()));
@@ -134,7 +136,11 @@ class LicenseService {
         payload['type'] != 'av-smartbilling-license' ||
         payload['iss'] != session.issuer ||
         payload['aud'] != 'av-smartbilling-mobile' ||
-        payload['deviceId'] != session.deviceId) {
+        payload['deviceId'] != session.deviceId ||
+        (payload['allowOnlineBilling'] is bool &&
+            payload['allowOnlineBilling'] != session.allowOnlineBilling) ||
+        (payload['allowCloudBackup'] is bool &&
+            payload['allowCloudBackup'] != session.allowCloudBackup)) {
       throw const FormatException(
         'License grant does not belong to this mobile application.',
       );

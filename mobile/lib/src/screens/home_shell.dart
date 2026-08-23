@@ -190,6 +190,24 @@ class _HomeShellState extends State<HomeShell> {
     },
     onCloudBackup: () {
       Navigator.pop(context);
+      if (widget.controller.session?.allowCloudBackup != true) {
+        showDialog<void>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('Cloud Backup is not included'),
+            content: const Text(
+              'Your current plan supports offline billing only. Upgrade your plan and activate the new key to use Cloud Backup.',
+            ),
+            actions: [
+              FilledButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('OK'),
+              ),
+            ],
+          ),
+        );
+        return;
+      }
       _openPage(CloudBackupScreen(controller: widget.controller));
     },
     onSecurity: () {
@@ -401,7 +419,7 @@ class _AppDrawer extends StatelessWidget {
                 ClipRRect(
                   borderRadius: BorderRadius.circular(14),
                   child: Image.asset(
-                    'assets/branding/av-smartbilling-icon-concept-3.png',
+                    'assets/branding/app-logo.png',
                     width: 54,
                     height: 54,
                   ),
@@ -489,65 +507,71 @@ class _AppDrawer extends StatelessWidget {
                   onTap: onSecurity,
                 ),
                 const Divider(indent: 20, endIndent: 20),
-                Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 18,
-                    vertical: 4,
-                  ),
-                  child: Container(
-                    padding: const EdgeInsets.fromLTRB(14, 8, 8, 8),
-                    decoration: BoxDecoration(
-                      color: controller.isOnline
-                          ? const Color(0xffe6f2f0)
-                          : Colors.grey.shade100,
-                      borderRadius: BorderRadius.circular(14),
+                if (controller.session?.allowOnlineBilling == true)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 18,
+                      vertical: 4,
                     ),
-                    child: Row(
-                      children: [
-                        Icon(
-                          controller.isOnline
-                              ? Icons.cloud_done_outlined
-                              : Icons.phone_android_outlined,
-                          color: controller.isOnline
-                              ? Theme.of(context).colorScheme.primary
-                              : Colors.grey.shade700,
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                controller.isOnline
-                                    ? 'Online Mode'
-                                    : 'Offline Mode',
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                              Text(
-                                controller.isOnline
-                                    ? 'Cloud Products & Customers'
-                                    : 'Saved on this phone',
-                                style: Theme.of(context).textTheme.bodySmall,
-                              ),
-                            ],
+                    child: Container(
+                      padding: const EdgeInsets.fromLTRB(14, 8, 8, 8),
+                      decoration: BoxDecoration(
+                        color: controller.isOnline
+                            ? const Color(0xffe6f2f0)
+                            : Colors.grey.shade100,
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(
+                            controller.isOnline
+                                ? Icons.cloud_done_outlined
+                                : Icons.phone_android_outlined,
+                            color: controller.isOnline
+                                ? Theme.of(context).colorScheme.primary
+                                : Colors.grey.shade700,
                           ),
-                        ),
-                        Switch.adaptive(
-                          value: controller.isOnline,
-                          onChanged: switchingMode
-                              ? null
-                              : (value) => onModeChanged(
-                                  value
-                                      ? BillingMode.online
-                                      : BillingMode.offline,
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  controller.isOnline
+                                      ? 'Online Mode'
+                                      : 'Offline Mode',
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                  ),
                                 ),
-                        ),
-                      ],
+                                Text(
+                                  controller.session?.allowOnlineBilling != true
+                                      ? 'Your plan supports offline billing only'
+                                      : controller.isOnline
+                                      ? 'Cloud Products & Customers'
+                                      : 'Saved on this phone',
+                                  style: Theme.of(context).textTheme.bodySmall,
+                                ),
+                              ],
+                            ),
+                          ),
+                          Switch.adaptive(
+                            value: controller.isOnline,
+                            onChanged:
+                                switchingMode ||
+                                    controller.session?.allowOnlineBilling !=
+                                        true
+                                ? null
+                                : (value) => onModeChanged(
+                                    value
+                                        ? BillingMode.online
+                                        : BillingMode.offline,
+                                  ),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
-                ),
                 _DrawerItem(
                   icon: Icons.info_outline,
                   label: 'About App',

@@ -5,28 +5,33 @@ import { createAdminClient } from "@/lib/supabase/admin";
 export const metadata = { title: "Purchase activation key" };
 export const dynamic = "force-dynamic";
 
-export default async function SubscribePage() {
+export default async function SubscribePage({ searchParams }: PageProps<"/subscribe">) {
+  const requestedPlan = (await searchParams).plan;
   const supabase = createAdminClient();
   const { data, error } = await supabase
     .from("plans")
     .select(
-      "id, name, description, max_devices, validation_window_days, price_in_paise, interval",
+      "id, name, description, features, allow_online_billing, allow_cloud_backup, is_publicly_visible, max_devices, validation_window_days, price_in_paise, interval, status",
     )
-    .eq("status", "ACTIVE")
-    .gt("price_in_paise", 0)
+    .or("status.eq.ACTIVE,is_publicly_visible.eq.true")
     .order("price_in_paise");
   const plans = error
     ? []
-    : (data ?? []).map((plan) => ({
+    : (data ?? []).filter((plan) => (plan.status === "ACTIVE" && Number(plan.price_in_paise) > 0) || (plan.status === "INACTIVE" && plan.is_publicly_visible)).map((plan) => ({
         id: plan.id,
         name: plan.name,
         description: plan.description,
+        features: Array.isArray(plan.features) ? plan.features.filter((feature): feature is string => typeof feature === "string") : [],
+        allowOnlineBilling: plan.allow_online_billing,
+        allowCloudBackup: plan.allow_cloud_backup,
         maxDevices: plan.max_devices,
         validationWindowDays: plan.validation_window_days,
         priceInPaise: Number(plan.price_in_paise),
-        interval: plan.interval as "MONTH" | "YEAR",
+        interval: plan.interval as "WEEK" | "MONTH" | "QUARTER" | "YEAR",
+        purchasable: plan.status === "ACTIVE" && Number(plan.price_in_paise) > 0,
       }));
 
+  const initialPlanId = typeof requestedPlan === "string" && plans.some((plan) => plan.id === requestedPlan && plan.purchasable) ? requestedPlan : undefined;
   return (
     <PublicSite>
       <section className="mx-auto max-w-7xl px-4 py-6 sm:px-5 sm:py-8">
@@ -43,7 +48,7 @@ export default async function SubscribePage() {
             payment.
           </p>
         </div>
-        <SubscriptionCheckout plans={plans} plansUnavailable={Boolean(error)} />
+        <SubscriptionCheckout plans={plans} plansUnavailable={Boolean(error)} initialPlanId={initialPlanId} />
       </section>
     </PublicSite>
   );

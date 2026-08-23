@@ -79,7 +79,7 @@ flutter:
   uses-material-design: true
 
   assets:
-    - assets/branding/av-smartbilling-icon-concept-3.png
+    - assets/branding/app-logo.png
 
   # To add assets to your application, add an assets section, like this:
   # assets:

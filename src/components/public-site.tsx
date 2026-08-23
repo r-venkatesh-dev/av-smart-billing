@@ -1,11 +1,13 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
-import { LockKeyhole, ReceiptIndianRupee } from "lucide-react";
+import { LockKeyhole } from "lucide-react";
+import { BrandLogo } from "@/components/brand-logo";
 import { publicBusiness } from "@/lib/public-business";
 
 const primaryLinks = [
   { href: "/", label: "Home" },
   { href: "/products", label: "Products" },
+  { href: "/plans", label: "Plans" },
   { href: "/about", label: "About" },
   { href: "/contact", label: "Contact" },
 ];
@@ -24,9 +26,7 @@ export function PublicHeader() {
           href="/"
           className="focus-ring flex shrink-0 items-center gap-2.5"
         >
-          <span className="grid size-9 place-items-center bg-[#057c73] text-white">
-            <ReceiptIndianRupee size={20} />
-          </span>
+          <BrandLogo size={36} />
           <span>
             <strong className="block text-sm leading-4">AV Smartbilling</strong>
             <small className="text-[9px] font-semibold uppercase tracking-[.14em] text-[#6d716f]">

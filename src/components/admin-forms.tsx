@@ -1,8 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useActionState } from "react";
+import { useActionState, useState } from "react";
 import { useFormStatus } from "react-dom";
+import { Plus, Trash2 } from "lucide-react";
 import {
   createCustomer,
   createLicense,
@@ -161,6 +162,10 @@ export function PlanForm({
     id: string;
     name: string;
     description: string;
+    features: string[];
+    allowOnlineBilling: boolean;
+    allowCloudBackup: boolean;
+    isPubliclyVisible: boolean;
     maxDevices: number;
     validationWindowDays: number;
     priceInPaise: number;
@@ -170,6 +175,9 @@ export function PlanForm({
 }) {
   const action = plan ? updatePlan.bind(null, plan.id) : createPlan;
   const [state, formAction] = useActionState(action, initialState);
+  const [features, setFeatures] = useState<string[]>(
+    plan?.features.length ? plan.features : [""],
+  );
   return (
     <form action={formAction} className="surface space-y-5 p-6">
       <div className="grid gap-5 sm:grid-cols-2">
@@ -235,7 +243,9 @@ export function PlanForm({
             defaultValue={plan?.interval ?? "YEAR"}
             className={inputClass}
           >
+            <option value="WEEK">Weekly (7 days)</option>
             <option value="MONTH">Monthly</option>
+            <option value="QUARTER">Quarterly (3 months)</option>
             <option value="YEAR">Yearly</option>
           </select>
         </label>
@@ -259,6 +269,66 @@ export function PlanForm({
             className="focus-ring w-full rounded-xl border border-[#dfe3eb] bg-white p-3 text-sm"
           />
         </label>
+        <fieldset className="sm:col-span-2">
+          <legend className="sr-only">Plan features</legend>
+          <div className="mb-2 flex items-center justify-between gap-3">
+            <div>
+              <p className="text-sm font-semibold">Plan features</p>
+              <p className="mt-0.5 text-xs text-[#667085]">
+                Optional selling points shown in the plan listing. Add up to 20.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setFeatures((current) => current.length < 20 ? [...current, ""] : current)}
+              disabled={features.length >= 20}
+              className="focus-ring inline-flex shrink-0 items-center gap-1.5 border border-[#057c73] px-3 py-2 text-[10px] font-bold uppercase tracking-[.08em] text-[#035f58] disabled:opacity-50"
+            >
+              <Plus size={14} /> Add feature
+            </button>
+          </div>
+          <div className="space-y-2">
+            {features.map((feature, index) => (
+              <div key={index} className="flex items-center gap-2">
+                <input
+                  name="features"
+                  value={feature}
+                  maxLength={120}
+                  placeholder={`Feature ${index + 1}, for example: Thermal printing`}
+                  onChange={(event) => setFeatures((current) => current.map((item, itemIndex) => itemIndex === index ? event.target.value : item))}
+                  className={inputClass}
+                />
+                <button
+                  type="button"
+                  aria-label={`Remove feature ${index + 1}`}
+                  onClick={() => setFeatures((current) => current.length === 1 ? [""] : current.filter((_, itemIndex) => itemIndex !== index))}
+                  className="focus-ring grid size-11 shrink-0 place-items-center border border-rose-200 text-rose-700 hover:bg-rose-50"
+                >
+                  <Trash2 size={16} />
+                </button>
+              </div>
+            ))}
+          </div>
+          <FieldError state={state} name="features" />
+        </fieldset>
+        <label className="flex items-start gap-3 rounded-xl border border-[#dfe3eb] p-4 sm:col-span-2">
+          <input name="isPubliclyVisible" type="checkbox" defaultChecked={plan?.isPubliclyVisible ?? true} className="mt-0.5 size-4 accent-[#057c73]" />
+          <span><strong className="block text-sm">Show on public plan pages</strong><span className="mt-1 block text-xs text-[#667085]">Inactive plans appear as Coming soon and cannot be purchased. Active paid plans remain purchasable.</span></span>
+        </label>
+        <fieldset className="sm:col-span-2">
+          <legend className="text-sm font-semibold">Licensed capabilities</legend>
+          <p className="mt-0.5 text-xs text-[#667085]">Turn both off for an offline-only Trial plan. These permissions are copied to each new license.</p>
+          <div className="mt-3 grid gap-3 sm:grid-cols-2">
+            <label className="flex items-start gap-3 rounded-xl border border-[#dfe3eb] p-4">
+              <input name="allowOnlineBilling" type="checkbox" defaultChecked={plan?.allowOnlineBilling ?? true} className="mt-0.5 size-4 accent-[#057c73]" />
+              <span><strong className="block text-sm">Offline + Online billing</strong><span className="mt-1 block text-xs text-[#667085]">Offline billing is always included. Enable this to also use cloud products, customers and online billing APIs.</span></span>
+            </label>
+            <label className="flex items-start gap-3 rounded-xl border border-[#dfe3eb] p-4">
+              <input name="allowCloudBackup" type="checkbox" defaultChecked={plan?.allowCloudBackup ?? true} className="mt-0.5 size-4 accent-[#057c73]" />
+              <span><strong className="block text-sm">Cloud backup</strong><span className="mt-1 block text-xs text-[#667085]">Upload or restore billing data through cloud backup.</span></span>
+            </label>
+          </div>
+        </fieldset>
       </div>
       {state.message ? (
         <p className="rounded-xl bg-rose-50 p-3 text-sm text-rose-700">
@@ -404,6 +474,7 @@ export function LicenseForm({
             name="expiresAt"
             label="License expiry date"
             defaultValue={defaultExpiry}
+            disablePast
           />
         </div>
         <p className="border-l-2 border-[#057c73] bg-[#e6f2f0] p-3 text-xs leading-5 text-[#035f58]">

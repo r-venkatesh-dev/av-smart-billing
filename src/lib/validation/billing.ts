@@ -29,7 +29,7 @@ export const billingProductSchema = z.object({
 
 export const billingInvoiceSchema = z.object({
   customerId: z.string().uuid().or(z.literal("WALK_IN")), walkInName: z.string().trim().max(180), walkInPhone: z.string().trim().max(10),
-  productId: z.string().uuid(), quantity: z.coerce.number().positive().max(1000000), dueAt: z.string().trim(), notes: z.string().trim().max(1000),
+  productId: z.string().uuid(), quantity: z.coerce.number().positive().max(1000000), dueAt: z.string().trim().refine((value) => !value || (/^\d{4}-\d{2}-\d{2}$/.test(value) && new Date(`${value}T23:59:59.999Z`).getTime() > Date.now()), "Due date cannot be in the past."), notes: z.string().trim().max(1000),
 }).superRefine((value, context) => {
   if (value.customerId !== "WALK_IN") return;
   if (value.walkInName.length < 2) context.addIssue({ code: "custom", path: ["walkInName"], message: "Enter the walk-in customer's name." });

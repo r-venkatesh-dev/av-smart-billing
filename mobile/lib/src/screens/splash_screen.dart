@@ -83,7 +83,7 @@ class _AnimatedSplashScreenState extends State<AnimatedSplashScreen>
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(24),
                     child: Image.asset(
-                      'assets/branding/av-smartbilling-icon-concept-3.png',
+                      'assets/branding/app-logo.png',
                       fit: BoxFit.cover,
                     ),
                   ),

@@ -85,7 +85,7 @@ class _ActivationScreenState extends State<ActivationScreen> {
                     child: ClipRRect(
                       borderRadius: BorderRadius.circular(19),
                       child: Image.asset(
-                        'assets/branding/av-smartbilling-icon-concept-3.png',
+                        'assets/branding/app-logo.png',
                         fit: BoxFit.cover,
                       ),
                     ),
@@ -163,9 +163,7 @@ class _ActivationScreenState extends State<ActivationScreen> {
                                     ),
                                   )
                                 : const Icon(Icons.verified_user),
-                            label: Text(
-                              _busy ? 'Activating…' : 'Activate',
-                            ),
+                            label: Text(_busy ? 'Activating…' : 'Activate'),
                             style: FilledButton.styleFrom(
                               minimumSize: const Size.fromHeight(52),
                             ),

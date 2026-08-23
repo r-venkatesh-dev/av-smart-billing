@@ -37,7 +37,7 @@ async function authorize(request: Request) {
   }
   const supabase = createAdminClient();
   const [license, device] = await Promise.all([
-    supabase.from("licenses").select("status, expires_at, customers(status), plans(status)").eq("id", grant.licenseId).maybeSingle(),
+    supabase.from("licenses").select("status, expires_at, allow_cloud_backup, customers(status), plans(status, allow_cloud_backup)").eq("id", grant.licenseId).maybeSingle(),
     supabase.from("devices").select("status, license_id").eq("id", grant.deviceId).maybeSingle(),
   ]);
   const customer = Array.isArray(license.data?.customers) ? license.data.customers[0] : license.data?.customers;
@@ -49,6 +49,7 @@ async function authorize(request: Request) {
     && device.data?.status === "ACTIVE"
     && device.data.license_id === grant.licenseId;
   if (!valid) throw new Response(JSON.stringify({ ok: false, message: "This license or device is no longer active." }), { status: 403, headers: { "Content-Type": "application/json" } });
+  if (!license.data?.allow_cloud_backup || plan?.allow_cloud_backup !== true) throw new Response(JSON.stringify({ ok: false, message: "Cloud backup is not included in this plan. Upgrade your plan to continue." }), { status: 403, headers: { "Content-Type": "application/json" } });
   return { grant, supabase };
 }
 

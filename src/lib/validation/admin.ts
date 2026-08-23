@@ -19,10 +19,14 @@ export const customerSchema = z.object({
 export const planSchema = z.object({
   name: z.string().trim().min(2).max(80),
   description: z.string().trim().max(500),
+  features: z.array(z.string().trim().min(2).max(120)).max(20),
+  allowOnlineBilling: z.boolean(),
+  allowCloudBackup: z.boolean(),
+  isPubliclyVisible: z.boolean(),
   maxDevices: z.coerce.number().int().min(1).max(100),
   validationWindowDays: z.coerce.number().int().min(1).max(365),
   priceInRupees: z.string().trim().regex(/^\d+(?:\.\d{1,2})?$/, "Enter a valid rupee amount with up to two decimals."),
-  interval: z.enum(["MONTH", "YEAR"]),
+  interval: z.enum(["WEEK", "MONTH", "QUARTER", "YEAR"]),
   status: z.enum(["ACTIVE", "INACTIVE"]),
 });
 

@@ -71,12 +71,16 @@ export async function listAdminPlans() {
   const supabase = await createSupabaseServerClient();
   const { data, error } = await supabase
     .from("plans")
-    .select("id, name, description, max_devices, validation_window_days, price_in_paise, interval, status")
+    .select("id, name, description, features, allow_online_billing, allow_cloud_backup, is_publicly_visible, max_devices, validation_window_days, price_in_paise, interval, status")
     .order("price_in_paise");
   return assertQuery(data, error).map((row) => ({
     id: row.id,
     name: row.name,
     description: row.description,
+    features: Array.isArray(row.features) ? row.features.filter((feature): feature is string => typeof feature === "string") : [],
+    allowOnlineBilling: row.allow_online_billing,
+    allowCloudBackup: row.allow_cloud_backup,
+    isPubliclyVisible: row.is_publicly_visible,
     maxDevices: row.max_devices,
     validationWindowDays: row.validation_window_days,
     priceInPaise: Number(row.price_in_paise),
@@ -120,7 +124,7 @@ export async function listAdminLicenses(limit?: number) {
   const supabase = await createSupabaseServerClient();
   let query = supabase
     .from("licenses")
-    .select("id, license_key_hint, max_devices, validation_window_days, status, expires_at, last_validated_at, created_at, customers(id, company_name), plans(id, name), devices(status)")
+    .select("id, license_key_hint, license_key_ciphertext, max_devices, validation_window_days, status, expires_at, last_validated_at, created_at, customers(id, company_name), plans(id, name), devices(status)")
     .order("created_at", { ascending: false });
   if (limit) query = query.limit(limit);
   const { data, error } = await query;
@@ -129,6 +133,7 @@ export async function listAdminLicenses(limit?: number) {
   return assertQuery(data, error).map((row) => ({
     id: row.id,
     maskedKey: row.license_key_hint,
+    recoverableKey: Boolean(row.license_key_ciphertext),
     maxDevices: row.max_devices,
     validationWindowDays: row.validation_window_days,
     status: row.status,
@@ -149,7 +154,7 @@ export async function getAdminLicense(id: string) {
   const supabase = await createSupabaseServerClient();
   const { data, error } = await supabase
     .from("licenses")
-    .select("id, license_key_hint, max_devices, validation_window_days, status, expires_at, last_validated_at, created_at, customers(company_name), plans(name), devices(id, device_name, fingerprint_hint, status, activated_at, last_validated_at)")
+    .select("id, license_key_hint, license_key_ciphertext, max_devices, validation_window_days, status, expires_at, last_validated_at, created_at, customers(company_name), plans(name), devices(id, device_name, fingerprint_hint, status, activated_at, last_validated_at)")
     .eq("id", id)
     .maybeSingle();
   if (error) throw new Error(`Supabase query failed: ${error.message}`);
@@ -157,6 +162,7 @@ export async function getAdminLicense(id: string) {
   return {
     id: data.id,
     maskedKey: data.license_key_hint,
+    recoverableKey: Boolean(data.license_key_ciphertext),
     maxDevices: data.max_devices,
     validationWindowDays: data.validation_window_days,
     status: data.status,

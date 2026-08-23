@@ -36,6 +36,15 @@ class _CloudBackupScreenState extends State<CloudBackupScreen> {
       checking = true;
       availabilityMessage = null;
     });
+    if (widget.controller.session?.allowCloudBackup != true) {
+      setState(() {
+        checking = false;
+        online = false;
+        availabilityMessage =
+            'Cloud backup is not included in your current plan. Upgrade your plan and activate the new key to use this feature.';
+      });
+      return;
+    }
     try {
       final status = await service.status(widget.controller.session!.token);
       if (!mounted) return;

@@ -66,6 +66,7 @@ class AppController extends ChangeNotifier {
   LicenseSession? session;
   bool locked;
   int dataRevision = 0;
+  Timer? _licenseExpiryTimer;
 
   static Future<AppController> create() async {
     final database = await AppDatabase.open();
@@ -75,7 +76,15 @@ class AppController extends ChangeNotifier {
     const billingModes = BillingModeService();
     final onlineBilling = OnlineBillingService();
     final session = await licenses.readActiveSession();
-    final billingMode = await billingModes.read();
+    final savedBillingMode = await billingModes.read();
+    final billingMode =
+        savedBillingMode == BillingMode.online &&
+            session?.allowOnlineBilling != true
+        ? BillingMode.offline
+        : savedBillingMode;
+    if (billingMode != savedBillingMode) {
+      await billingModes.save(BillingMode.offline);
+    }
     final controller = AppController._(
       database: database,
       licenses: licenses,
@@ -87,6 +96,7 @@ class AppController extends ChangeNotifier {
       session: session,
       locked: session?.isActive == true && await security.enabled,
     );
+    controller._scheduleLicenseExpiry();
     unawaited(controller.checkLowStock());
     return controller;
   }
@@ -116,6 +126,36 @@ class AppController extends ChangeNotifier {
 
   bool get isOnline => billingMode == BillingMode.online;
 
+  void _scheduleLicenseExpiry() {
+    _licenseExpiryTimer?.cancel();
+    final current = session;
+    if (current == null) return;
+    final remaining = current.validUntil.difference(DateTime.now());
+    if (remaining <= Duration.zero) {
+      unawaited(_expireLicenseSession());
+      return;
+    }
+    _licenseExpiryTimer = Timer(remaining, _expireLicenseSession);
+  }
+
+  Future<void> _expireLicenseSession() async {
+    if (session?.isActive == true) {
+      _scheduleLicenseExpiry();
+      return;
+    }
+    await licenses.clearSession();
+    await billingModes.save(BillingMode.offline);
+    session = null;
+    billingMode = BillingMode.offline;
+    onlineStatus = null;
+    locked = false;
+    notifyListeners();
+  }
+
+  Future<void> checkLicenseExpiry() async {
+    if (session?.isActive != true) await _expireLicenseSession();
+  }
+
   Future<void> ensureOnlineReady() async {
     final current = session;
     if (current == null) {
@@ -130,6 +170,11 @@ class AppController extends ChangeNotifier {
       return;
     }
     if (mode == BillingMode.online) {
+      if (session?.allowOnlineBilling != true) {
+        throw Exception(
+          'Online billing is not included in your current plan. Upgrade your plan and activate the new key to use Online Mode.',
+        );
+      }
       await validateLicense();
       await ensureOnlineReady();
     }
@@ -222,6 +267,7 @@ class AppController extends ChangeNotifier {
     billingMode = BillingMode.offline;
     await billingModes.save(billingMode);
     await database.initializeBusinessName(session!.customerName);
+    _scheduleLicenseExpiry();
     notifyListeners();
   }
 
@@ -229,9 +275,18 @@ class AppController extends ChangeNotifier {
     final current = session;
     if (current == null) throw Exception('No activation is stored.');
     session = await licenses.validate(current);
+    _scheduleLicenseExpiry();
+    if (billingMode == BillingMode.online &&
+        session?.allowOnlineBilling != true) {
+      billingMode = BillingMode.offline;
+      onlineStatus = null;
+      await billingModes.save(BillingMode.offline);
+    }
+    notifyListeners();
   }
 
   Future<void> changeActivationKey() async {
+    _licenseExpiryTimer?.cancel();
     await licenses.clearSession();
     await billingModes.save(BillingMode.offline);
     session = null;
@@ -266,6 +321,12 @@ class AppController extends ChangeNotifier {
     locked = true;
     notifyListeners();
   }
+
+  @override
+  void dispose() {
+    _licenseExpiryTimer?.cancel();
+    super.dispose();
+  }
 }
 
 class AvSmartbillingApp extends StatefulWidget {
@@ -294,6 +355,8 @@ class _AvSmartbillingAppState extends State<AvSmartbillingApp>
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.paused) {
       widget.controller.lockIfEnabled();
+    } else if (state == AppLifecycleState.resumed) {
+      widget.controller.checkLicenseExpiry();
     }
   }
 

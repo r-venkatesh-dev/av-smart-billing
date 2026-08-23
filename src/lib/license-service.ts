@@ -29,6 +29,19 @@ function grant(row: Record<string, unknown>): LicenseGrant {
     expiresAt: String(row.expires_at),
     validationWindowDays: Number(row.validation_window_days),
     maxDevices: Number(row.max_devices),
+    allowOnlineBilling: row.allow_online_billing !== false,
+    allowCloudBackup: row.allow_cloud_backup !== false,
+  };
+}
+
+async function addEntitlements(supabase: ReturnType<typeof createAdminClient>, row: Record<string, unknown>) {
+  const license = await supabase.from("licenses").select("allow_online_billing, allow_cloud_backup, plans(allow_online_billing, allow_cloud_backup)").eq("id", String(row.license_id)).single();
+  if (license.error) throw new LicenseLifecycleError("Unable to read the license capabilities.", 500);
+  const plan = Array.isArray(license.data.plans) ? license.data.plans[0] : license.data.plans;
+  return {
+    ...row,
+    allow_online_billing: license.data.allow_online_billing && plan?.allow_online_billing === true,
+    allow_cloud_backup: license.data.allow_cloud_backup && plan?.allow_cloud_backup === true,
   };
 }
 
@@ -66,7 +79,7 @@ export async function activateLicense(input: { licenseKey: string; deviceFingerp
     await recordRejectedActivation(keyHash, message, input.ipAddress, input.userAgent);
     throw new LicenseLifecycleError(message === "Invalid license key" ? message : message.replace(/^.*?: /, ""), message === "Invalid license key" ? 404 : 409);
   }
-  const licenseGrant = grant(data[0] as Record<string, unknown>);
+  const licenseGrant = grant(await addEntitlements(supabase, data[0] as Record<string, unknown>));
   await ensureLicensedBillingWorkspace(supabase, licenseGrant);
   return { grant: licenseGrant, signed: await signLicenseGrant(licenseGrant, input.client) };
 }
@@ -82,7 +95,7 @@ export async function validateActivatedLicense(input: { deviceId: string; device
     p_user_agent: input.userAgent,
   });
   if (error || !data?.[0]) throw new LicenseLifecycleError(error?.message ?? "License validation failed", 409);
-  const licenseGrant = grant(data[0] as Record<string, unknown>);
+  const licenseGrant = grant(await addEntitlements(supabase, data[0] as Record<string, unknown>));
   await ensureLicensedBillingWorkspace(supabase, licenseGrant);
   return { grant: licenseGrant, signed: await signLicenseGrant(licenseGrant, input.client) };
 }

@@ -91,7 +91,7 @@ class _AppLockScreenState extends State<AppLockScreen> {
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(24),
                     child: Image.asset(
-                      'assets/branding/av-smartbilling-icon-concept-3.png',
+                      'assets/branding/app-logo.png',
                       width: 88,
                       height: 88,
                     ),

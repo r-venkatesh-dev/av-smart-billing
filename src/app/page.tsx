@@ -142,7 +142,7 @@ export default function HomePage() {
             </div>
           </div>
           <Link
-            href="/subscribe"
+            href="/plans"
             className="focus-ring shrink-0 bg-[#057c73] px-5 py-3 text-center text-[10px] font-bold uppercase tracking-[.1em] text-white"
           >
             View plans

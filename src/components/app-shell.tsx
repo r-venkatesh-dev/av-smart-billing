@@ -3,7 +3,8 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState, type ReactNode } from "react";
-import { Boxes, Building2, CircleDollarSign, FileBarChart, FileText, KeyRound, LayoutDashboard, LogOut, Menu, MonitorSmartphone, Package, ReceiptIndianRupee, ScanBarcode, Settings, Users, WalletCards, Warehouse, X } from "lucide-react";
+import { Boxes, Building2, CircleDollarSign, FileBarChart, FileText, KeyRound, LayoutDashboard, LogOut, Menu, MonitorSmartphone, Package, ScanBarcode, Settings, Users, WalletCards, Warehouse, X } from "lucide-react";
+import { BrandLogo } from "@/components/brand-logo";
 import { logout } from "@/app/login/actions";
 import { GlobalSearch } from "@/components/global-search";
 import { NavigationFeedback } from "@/components/navigation-feedback";
@@ -46,7 +47,7 @@ export function AppShell({ mode, children, user }: { mode: "admin" | "billing"; 
       <aside className={`app-shell-chrome fixed inset-y-0 left-0 z-40 flex w-[264px] flex-col bg-[#171b36] text-white transition-transform duration-200 lg:translate-x-0 ${open ? "translate-x-0" : "-translate-x-full"}`}>
         <div className="flex h-[76px] items-center justify-between border-b border-white/10 px-5">
           <Link href={mode === "admin" ? "/admin/dashboard" : "/billing/dashboard"} className="focus-ring flex items-center gap-3 rounded-lg">
-            <span className="grid size-9 place-items-center rounded-xl bg-[#6f62ff]"><ReceiptIndianRupee size={20} strokeWidth={2} /></span>
+            <BrandLogo size={36} />
             <span className="border-l border-white/35 pl-3"><strong className="block font-serif text-[17px] font-semibold tracking-wide">AV Smartbilling</strong><small className="block text-[9px] font-semibold uppercase tracking-[.18em] text-[#aaaed0]">{productName}</small></span>
           </Link>
           <button className="rounded-lg p-1.5 text-[#bfc3dc] hover:bg-white/10 lg:hidden" onClick={() => setOpen(false)}><X size={20} /></button>
