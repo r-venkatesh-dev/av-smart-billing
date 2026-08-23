@@ -146,15 +146,17 @@ class PosScreenState extends State<PosScreen> {
         cart: cart,
         customers: customers,
         paymentQrPath: business['payment_qr_path'] as String? ?? '',
-        onSave: (customer, name, phone, payment, overallDiscount) =>
-            widget.controller.database.createInvoice(
-              customer: customer,
-              walkInName: name,
-              walkInPhone: phone,
-              lines: cart,
-              paymentMethod: payment,
-              overallDiscountPercent: overallDiscount,
-            ),
+        onSave:
+            (customer, name, phone, payment, overallDiscount, saveCustomer) =>
+                widget.controller.database.createInvoice(
+                  customer: customer,
+                  walkInName: name,
+                  walkInPhone: phone,
+                  saveWalkInCustomer: saveCustomer,
+                  lines: cart,
+                  paymentMethod: payment,
+                  overallDiscountPercent: overallDiscount,
+                ),
         onHold: (lines) async {
           await widget.controller.database.holdBill(lines);
           cart.clear();

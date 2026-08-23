@@ -17,6 +17,7 @@ const adminNav: NavItem[] = [
   { label: "Licenses", href: "/admin/licenses", icon: KeyRound },
   { label: "Devices", href: "/admin/devices", icon: MonitorSmartphone },
   { label: "Plans", href: "/admin/plans", icon: WalletCards },
+  { label: "Subscriptions", href: "/admin/subscriptions", icon: CircleDollarSign },
   { label: "Settings", href: "/admin/settings", icon: Settings },
 ];
 

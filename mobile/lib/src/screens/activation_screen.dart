@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../app.dart';
 import '../input_rules.dart';
@@ -38,6 +39,19 @@ class _ActivationScreenState extends State<ActivationScreen> {
       }
     } finally {
       if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _openSubscriptionPage() async {
+    final opened = await launchUrl(
+      Uri.parse('https://av-smart-billing.vercel.app/subscribe'),
+      mode: LaunchMode.externalApplication,
+    );
+    if (!opened && mounted) {
+      setState(
+        () => _error =
+            'Could not open the subscription page. Please check your internet connection.',
+      );
     }
   }
 
@@ -150,10 +164,19 @@ class _ActivationScreenState extends State<ActivationScreen> {
                                   )
                                 : const Icon(Icons.verified_user),
                             label: Text(
-                              _busy ? 'Activating…' : 'Activate software',
+                              _busy ? 'Activating…' : 'Activate',
                             ),
                             style: FilledButton.styleFrom(
                               minimumSize: const Size.fromHeight(52),
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+                          TextButton.icon(
+                            onPressed: _busy ? null : _openSubscriptionPage,
+                            icon: const Icon(Icons.open_in_browser),
+                            label: const Text('Get your activation key'),
+                            style: TextButton.styleFrom(
+                              minimumSize: const Size.fromHeight(48),
                             ),
                           ),
                         ],

@@ -96,7 +96,7 @@ export default async function AdminDashboardPage() {
           <div className="border-b border-[#eaecf0] px-6 py-4">
             <h2 className="font-bold">Six-month growth</h2>
             <p className="mt-0.5 text-xs text-[#98a2b3]">
-              Licenses and customers created in Supabase
+              Licenses and customers created
             </p>
           </div>
           <div className="p-6">

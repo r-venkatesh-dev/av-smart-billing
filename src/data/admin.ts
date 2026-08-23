@@ -85,6 +85,36 @@ export async function listAdminPlans() {
   }));
 }
 
+export async function listAdminSubscriptionOrders() {
+  await requireAdminRole();
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase
+    .from("subscription_orders")
+    .select("id, company_name, contact_person, email, phone, gstin, plan_name, amount_in_paise, currency, status, razorpay_order_id, latest_razorpay_payment_id, failure_code, failure_description, paid_at, created_at, customer_id, license_id, subscription_payment_attempts(count)")
+    .order("created_at", { ascending: false });
+  return assertQuery(data, error).map((row) => ({
+    id: row.id,
+    companyName: row.company_name,
+    contactPerson: row.contact_person,
+    email: row.email,
+    phone: row.phone,
+    gstin: row.gstin,
+    planName: row.plan_name,
+    amountInPaise: Number(row.amount_in_paise),
+    currency: row.currency,
+    status: row.status,
+    razorpayOrderId: row.razorpay_order_id,
+    razorpayPaymentId: row.latest_razorpay_payment_id,
+    failureCode: row.failure_code,
+    failureDescription: row.failure_description,
+    paidAt: row.paid_at,
+    createdAt: row.created_at,
+    customerId: row.customer_id,
+    licenseId: row.license_id,
+    attemptCount: one(row.subscription_payment_attempts)?.count ?? 0,
+  }));
+}
+
 export async function listAdminLicenses(limit?: number) {
   await requireAdminRole();
   const supabase = await createSupabaseServerClient();

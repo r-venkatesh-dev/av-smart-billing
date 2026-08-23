@@ -526,6 +526,7 @@ class AppDatabase {
     Customer? customer,
     required String walkInName,
     required String walkInPhone,
+    bool saveWalkInCustomer = false,
     required List<CartLine> lines,
     required String paymentMethod,
     double overallDiscountPercent = 0,
@@ -537,6 +538,13 @@ class AppDatabase {
     if (customer == null) {
       final phoneError = validateOptionalMobileNumber(walkInPhone);
       if (phoneError != null) throw Exception(phoneError);
+      if (saveWalkInCustomer && walkInPhone.trim().isEmpty) {
+        throw Exception('Enter mobile number to save this customer.');
+      }
+      if (saveWalkInCustomer &&
+          walkInName.trim().toLowerCase() == 'walk-in customer') {
+        throw Exception('Enter the actual customer name.');
+      }
     }
     return db.transaction((txn) async {
       final business = (await txn.query(
@@ -593,16 +601,47 @@ class AppDatabase {
       final invoiceNumber =
           '${business['invoice_prefix']}-${number.toString().padLeft(6, '0')}';
       final paid = paymentMethod != 'CREDIT';
+      var invoiceCustomer = customer;
+      if (invoiceCustomer == null && saveWalkInCustomer) {
+        final cleanPhone = walkInPhone.trim();
+        final existing = await txn.query(
+          'customers',
+          where: 'phone=?',
+          whereArgs: [cleanPhone],
+          limit: 1,
+        );
+        if (existing.isNotEmpty) {
+          invoiceCustomer = Customer.fromMap(existing.single);
+        } else {
+          final customerId = const Uuid().v4();
+          await txn.insert('customers', {
+            'id': customerId,
+            'name': walkInName.trim(),
+            'phone': cleanPhone,
+            'address': '',
+            'gstin': null,
+            'created_at': issuedAt,
+            'updated_at': issuedAt,
+          });
+          invoiceCustomer = Customer(
+            id: customerId,
+            name: walkInName.trim(),
+            phone: cleanPhone,
+            address: '',
+            gstin: '',
+          );
+        }
+      }
       await txn.insert('invoices', {
         'id': id,
         'invoice_number': invoiceNumber,
-        'customer_id': customer?.id,
-        'customer_name': customer?.name ?? walkInName.trim(),
-        'customer_phone': customer?.phone ?? walkInPhone.trim(),
-        'customer_address': customer?.address ?? '',
-        'customer_gstin': customer?.gstin.isEmpty == true
+        'customer_id': invoiceCustomer?.id,
+        'customer_name': invoiceCustomer?.name ?? walkInName.trim(),
+        'customer_phone': invoiceCustomer?.phone ?? walkInPhone.trim(),
+        'customer_address': invoiceCustomer?.address ?? '',
+        'customer_gstin': invoiceCustomer?.gstin.isEmpty == true
             ? null
-            : customer?.gstin,
+            : invoiceCustomer?.gstin,
         'issued_at': issuedAt,
         'status': paid ? 'PAID' : 'DUE',
         'subtotal_in_paise': subtotal,

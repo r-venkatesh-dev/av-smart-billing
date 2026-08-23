@@ -553,6 +553,7 @@ class CheckoutSheet extends StatefulWidget {
     String walkInPhone,
     String paymentMethod,
     double overallDiscountPercent,
+    bool saveWalkInCustomer,
   )
   onSave;
   final VoidCallback onCancel;
@@ -572,6 +573,7 @@ class _CheckoutSheetState extends State<CheckoutSheet> {
   Customer? selected;
   String payment = 'CASH';
   bool saving = false;
+  bool saveWalkInCustomer = false;
 
   double get overallDiscountValue => double.tryParse(overallDiscount.text) ?? 0;
 
@@ -658,6 +660,7 @@ class _CheckoutSheetState extends State<CheckoutSheet> {
         phone.text,
         payment,
         overallDiscountValue,
+        saveWalkInCustomer,
       );
       if (mounted) Navigator.pop(context, id);
     } catch (error) {
@@ -863,6 +866,7 @@ class _CheckoutSheetState extends State<CheckoutSheet> {
                 },
                 onSelected: (customer) => setState(() {
                   selected = customer;
+                  saveWalkInCustomer = false;
                   name.text = customer.name;
                   phone.text = customer.phone;
                 }),
@@ -883,6 +887,7 @@ class _CheckoutSheetState extends State<CheckoutSheet> {
                                   tooltip: 'Use walk-in customer',
                                   onPressed: () => setState(() {
                                     selected = null;
+                                    saveWalkInCustomer = false;
                                     controller.clear();
                                     name.text = 'Walk-in Customer';
                                     phone.clear();
@@ -892,7 +897,10 @@ class _CheckoutSheetState extends State<CheckoutSheet> {
                         ),
                         onChanged: (text) {
                           if (selected != null && text != selected!.name) {
-                            setState(() => selected = null);
+                            setState(() {
+                              selected = null;
+                              saveWalkInCustomer = false;
+                            });
                           }
                         },
                       );
@@ -937,10 +945,17 @@ class _CheckoutSheetState extends State<CheckoutSheet> {
                   controller: name,
                   enabled: !saving,
                   decoration: const InputDecoration(labelText: 'Customer name'),
-                  validator: (text) =>
-                      selected == null && (text ?? '').trim().length < 2
-                      ? 'Enter the customer name.'
-                      : null,
+                  validator: (text) {
+                    final value = (text ?? '').trim();
+                    if (selected == null && value.length < 2) {
+                      return 'Enter the customer name.';
+                    }
+                    if (saveWalkInCustomer &&
+                        value.toLowerCase() == 'walk-in customer') {
+                      return 'Enter the actual customer name.';
+                    }
+                    return null;
+                  },
                 ),
                 const SizedBox(height: 12),
                 TextFormField(
@@ -950,8 +965,39 @@ class _CheckoutSheetState extends State<CheckoutSheet> {
                   inputFormatters: mobileNumberInputFormatters,
                   decoration: const InputDecoration(labelText: 'Mobile number'),
                   validator: selected == null
-                      ? validateOptionalMobileNumber
+                      ? (text) {
+                          if (saveWalkInCustomer &&
+                              (text ?? '').trim().isEmpty) {
+                            return 'Enter mobile number to save customer.';
+                          }
+                          return validateOptionalMobileNumber(text);
+                        }
                       : null,
+                ),
+                const SizedBox(height: 8),
+                Container(
+                  decoration: BoxDecoration(
+                    color: const Color(0xffeaf7f5),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: CheckboxListTile(
+                    value: saveWalkInCustomer,
+                    enabled: !saving,
+                    controlAffinity: ListTileControlAffinity.leading,
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 8),
+                    title: const Text(
+                      'Save this customer for future bills',
+                      style: TextStyle(fontWeight: FontWeight.w600),
+                    ),
+                    subtitle: const Text(
+                      'Adds the entered name and mobile number to Customers.',
+                    ),
+                    onChanged: saving
+                        ? null
+                        : (value) => setState(
+                            () => saveWalkInCustomer = value ?? false,
+                          ),
+                  ),
                 ),
               ],
               const SizedBox(height: 12),

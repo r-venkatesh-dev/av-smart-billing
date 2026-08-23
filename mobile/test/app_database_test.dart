@@ -99,6 +99,77 @@ void main() {
   });
 
   test(
+    'saves a new checkout customer atomically and reuses their mobile',
+    () async {
+      await database.saveProduct(
+        name: 'Soap',
+        sku: 'SOAP-CUSTOMER',
+        barcode: '',
+        unit: 'pcs',
+        price: 40,
+        taxRate: 0,
+        discountPercent: 0,
+        stock: 3,
+      );
+      final product = (await database.products()).single;
+      final firstInvoice = await database.createInvoice(
+        customer: null,
+        walkInName: 'New Customer',
+        walkInPhone: '9876543210',
+        saveWalkInCustomer: true,
+        lines: [CartLine(product: product)],
+        paymentMethod: 'CASH',
+      );
+
+      final customers = await database.customers();
+      expect(customers, hasLength(1));
+      expect(customers.single.name, 'New Customer');
+      expect(
+        (await database.invoice(firstInvoice)).invoice['customer_id'],
+        customers.single.id,
+      );
+
+      await database.createInvoice(
+        customer: null,
+        walkInName: 'New Customer',
+        walkInPhone: '9876543210',
+        saveWalkInCustomer: true,
+        lines: [CartLine(product: (await database.products()).single)],
+        paymentMethod: 'CASH',
+      );
+      expect(await database.customers(), hasLength(1));
+    },
+  );
+
+  test('does not save checkout customer when invoice creation fails', () async {
+    await database.saveProduct(
+      name: 'Limited',
+      sku: 'LIMITED-CUSTOMER',
+      barcode: '',
+      unit: 'pcs',
+      price: 40,
+      taxRate: 0,
+      discountPercent: 0,
+      stock: 1,
+    );
+
+    await expectLater(
+      database.createInvoice(
+        customer: null,
+        walkInName: 'Failed Customer',
+        walkInPhone: '9123456789',
+        saveWalkInCustomer: true,
+        lines: [
+          CartLine(product: (await database.products()).single, quantity: 2),
+        ],
+        paymentMethod: 'CASH',
+      ),
+      throwsA(predicate((error) => error.toString().contains('stock'))),
+    );
+    expect(await database.customers(), isEmpty);
+  });
+
+  test(
     'rejects customer mobile numbers that are not exactly 10 digits',
     () async {
       await expectLater(

@@ -127,7 +127,7 @@ void main() {
                 builder: (_) => CheckoutSheet(
                   cart: [CartLine(product: product)],
                   customers: const [],
-                  onSave: (_, _, _, _, _) async => 'invoice-1',
+                  onSave: (_, _, _, _, _, _) async => 'invoice-1',
                   onCancel: () {},
                 ),
               ),
@@ -177,7 +177,7 @@ void main() {
                 builder: (_) => CheckoutSheet(
                   cart: [CartLine(product: product)],
                   customers: const [],
-                  onSave: (_, _, _, _, _) async {
+                  onSave: (_, _, _, _, _, _) async {
                     saved = true;
                     return 'invoice-1';
                   },
@@ -203,6 +203,70 @@ void main() {
     expect(cancelled, isTrue);
     expect(saved, isFalse);
     expect(find.text('Complete bill'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('checkout can request saving a new walk-in customer', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(800, 1200));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final product = Product(
+      id: 'p1',
+      name: 'Tea',
+      sku: 'TEA-1',
+      barcode: '',
+      unit: 'pcs',
+      priceInPaise: 2000,
+      taxRateBasisPoints: 500,
+      discountPercent: 0,
+      stockQuantity: 10,
+      active: true,
+    );
+    var requestedSave = false;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Builder(
+          builder: (context) => Scaffold(
+            body: FilledButton(
+              onPressed: () => showModalBottomSheet<String>(
+                context: context,
+                isScrollControlled: true,
+                builder: (_) => CheckoutSheet(
+                  cart: [CartLine(product: product)],
+                  customers: const [],
+                  onSave: (_, name, phone, _, _, saveCustomer) async {
+                    expect(name, 'New Customer');
+                    expect(phone, '9876543210');
+                    requestedSave = saveCustomer;
+                    return 'invoice-1';
+                  },
+                  onCancel: () {},
+                ),
+              ),
+              child: const Text('Checkout'),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('Checkout'));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.widgetWithText(TextFormField, 'Customer name'),
+      'New Customer',
+    );
+    await tester.enterText(
+      find.widgetWithText(TextFormField, 'Mobile number'),
+      '9876543210',
+    );
+    await tester.tap(find.text('Save this customer for future bills'));
+    await tester.ensureVisible(find.text('Complete sale'));
+    await tester.tap(find.text('Complete sale'));
+    await tester.pumpAndSettle();
+
+    expect(requestedSave, isTrue);
     expect(tester.takeException(), isNull);
   });
 }
