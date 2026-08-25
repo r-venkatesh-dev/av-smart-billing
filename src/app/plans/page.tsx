@@ -14,7 +14,7 @@ export default async function PublicPlansPage() {
   const supabase = createAdminClient();
   const { data, error } = await supabase
     .from("plans")
-    .select("id, name, description, features, allow_online_billing, allow_cloud_backup, is_publicly_visible, max_devices, validation_window_days, price_in_paise, interval, status")
+    .select("id, name, description, features, allow_online_billing, allow_cloud_backup, allow_reports_exports, is_publicly_visible, max_devices, validation_window_days, price_in_paise, interval, status")
     .or("status.eq.ACTIVE,is_publicly_visible.eq.true")
     .order("price_in_paise");
   const plans = error ? [] : (data ?? []).filter((plan) => (plan.status === "ACTIVE" && Number(plan.price_in_paise) > 0) || (plan.status === "INACTIVE" && plan.is_publicly_visible));
@@ -50,6 +50,7 @@ export default async function PublicPlansPage() {
                     <li className="flex gap-2"><Check size={15} className="mt-0.5 shrink-0 text-[#057c73]" />Secure signed activation</li>
                     <li className="flex gap-2"><Check size={15} className="mt-0.5 shrink-0 text-[#057c73]" />{plan.allow_online_billing ? "Offline + Online billing included" : "Offline billing only"}</li>
                     <li className="flex gap-2">{plan.allow_cloud_backup ? <Check size={15} className="mt-0.5 shrink-0 text-[#057c73]" /> : <X size={15} className="mt-0.5 shrink-0 text-rose-500" />}{plan.allow_cloud_backup ? "Cloud backup included" : "Cloud backup not included"}</li>
+                    <li className="flex gap-2">{plan.allow_reports_exports ? <Check size={15} className="mt-0.5 shrink-0 text-[#057c73]" /> : <X size={15} className="mt-0.5 shrink-0 text-rose-500" />}{plan.allow_reports_exports ? "Reports & exports included" : "Reports & exports not included"}</li>
                     {features.map((feature) => <li key={feature} className="flex gap-2"><Check size={15} className="mt-0.5 shrink-0 text-[#057c73]" />{feature}</li>)}
                   </ul>
                   {purchasable ? <Link href={`/subscribe?plan=${plan.id}`} className="mt-5 flex h-11 items-center justify-center bg-[#057c73] px-4 text-[10px] font-bold uppercase tracking-[.1em] text-white">Choose {plan.name}</Link> : <span className="mt-5 flex h-11 items-center justify-center border border-[#dfe3e1] bg-[#f4f5f4] px-4 text-[10px] font-bold uppercase tracking-[.1em] text-[#8a908d]">Not available for purchase</span>}

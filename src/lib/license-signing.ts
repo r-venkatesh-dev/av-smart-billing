@@ -14,6 +14,7 @@ export interface LicenseGrant {
   maxDevices: number;
   allowOnlineBilling: boolean;
   allowCloudBackup: boolean;
+  allowReportsExports: boolean;
 }
 
 export type LicenseClient = "DESKTOP" | "MOBILE";
@@ -43,6 +44,7 @@ export async function signLicenseGrant(grant: LicenseGrant, client: LicenseClien
     maxDevices: grant.maxDevices,
     allowOnlineBilling: grant.allowOnlineBilling,
     allowCloudBackup: grant.allowCloudBackup,
+    allowReportsExports: grant.allowReportsExports,
     licenseExpiresAt: grant.expiresAt,
   })
     .setProtectedHeader({ alg: "EdDSA", kid: env.LICENSE_SIGNING_KEY_ID, typ: "JWT" })
@@ -61,5 +63,5 @@ export async function verifyLicenseGrant(token: string, client: LicenseClient = 
   const env = getServerEnv();
   const { payload } = await jwtVerify(token, createPublicKey(privateKey()), { issuer: env.LICENSE_ISSUER, audience: audienceFor(client), algorithms: ["EdDSA"] });
   if (payload.type !== "av-smartbilling-license" || !payload.licenseId || !payload.deviceId || !payload.customerName || !payload.planName || !payload.licenseExpiresAt) throw new Error("Invalid license grant");
-  return { licenseId: String(payload.licenseId), deviceId: String(payload.deviceId), customerName: String(payload.customerName), planName: String(payload.planName), expiresAt: String(payload.licenseExpiresAt), validationWindowDays: 0, maxDevices: Number(payload.maxDevices), allowOnlineBilling: payload.allowOnlineBilling !== false, allowCloudBackup: payload.allowCloudBackup !== false };
+  return { licenseId: String(payload.licenseId), deviceId: String(payload.deviceId), customerName: String(payload.customerName), planName: String(payload.planName), expiresAt: String(payload.licenseExpiresAt), validationWindowDays: 0, maxDevices: Number(payload.maxDevices), allowOnlineBilling: payload.allowOnlineBilling !== false, allowCloudBackup: payload.allowCloudBackup !== false, allowReportsExports: payload.allowReportsExports !== false };
 }

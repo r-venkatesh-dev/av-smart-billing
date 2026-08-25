@@ -11,7 +11,7 @@ export default async function SubscribePage({ searchParams }: PageProps<"/subscr
   const { data, error } = await supabase
     .from("plans")
     .select(
-      "id, name, description, features, allow_online_billing, allow_cloud_backup, is_publicly_visible, max_devices, validation_window_days, price_in_paise, interval, status",
+      "id, name, description, features, allow_online_billing, allow_cloud_backup, allow_reports_exports, is_publicly_visible, max_devices, validation_window_days, price_in_paise, interval, status",
     )
     .or("status.eq.ACTIVE,is_publicly_visible.eq.true")
     .order("price_in_paise");
@@ -24,6 +24,7 @@ export default async function SubscribePage({ searchParams }: PageProps<"/subscr
         features: Array.isArray(plan.features) ? plan.features.filter((feature): feature is string => typeof feature === "string") : [],
         allowOnlineBilling: plan.allow_online_billing,
         allowCloudBackup: plan.allow_cloud_backup,
+        allowReportsExports: plan.allow_reports_exports,
         maxDevices: plan.max_devices,
         validationWindowDays: plan.validation_window_days,
         priceInPaise: Number(plan.price_in_paise),

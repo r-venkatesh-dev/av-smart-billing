@@ -115,6 +115,7 @@ class LicenseService {
       validUntil: DateTime.parse(signed['validUntil'] as String),
       allowOnlineBilling: grant['allowOnlineBilling'] as bool? ?? true,
       allowCloudBackup: grant['allowCloudBackup'] as bool? ?? true,
+      allowReportsExports: grant['allowReportsExports'] as bool? ?? true,
     );
     await _verify(session);
     await _storage.write(key: _sessionKey, value: jsonEncode(session.toJson()));
@@ -140,7 +141,9 @@ class LicenseService {
         (payload['allowOnlineBilling'] is bool &&
             payload['allowOnlineBilling'] != session.allowOnlineBilling) ||
         (payload['allowCloudBackup'] is bool &&
-            payload['allowCloudBackup'] != session.allowCloudBackup)) {
+            payload['allowCloudBackup'] != session.allowCloudBackup) ||
+        (payload['allowReportsExports'] is bool &&
+            payload['allowReportsExports'] != session.allowReportsExports)) {
       throw const FormatException(
         'License grant does not belong to this mobile application.',
       );

@@ -31,17 +31,19 @@ function grant(row: Record<string, unknown>): LicenseGrant {
     maxDevices: Number(row.max_devices),
     allowOnlineBilling: row.allow_online_billing !== false,
     allowCloudBackup: row.allow_cloud_backup !== false,
+    allowReportsExports: row.allow_reports_exports !== false,
   };
 }
 
 async function addEntitlements(supabase: ReturnType<typeof createAdminClient>, row: Record<string, unknown>) {
-  const license = await supabase.from("licenses").select("allow_online_billing, allow_cloud_backup, plans(allow_online_billing, allow_cloud_backup)").eq("id", String(row.license_id)).single();
+  const license = await supabase.from("licenses").select("allow_online_billing, allow_cloud_backup, allow_reports_exports, plans(allow_online_billing, allow_cloud_backup, allow_reports_exports)").eq("id", String(row.license_id)).single();
   if (license.error) throw new LicenseLifecycleError("Unable to read the license capabilities.", 500);
   const plan = Array.isArray(license.data.plans) ? license.data.plans[0] : license.data.plans;
   return {
     ...row,
     allow_online_billing: license.data.allow_online_billing && plan?.allow_online_billing === true,
     allow_cloud_backup: license.data.allow_cloud_backup && plan?.allow_cloud_backup === true,
+    allow_reports_exports: license.data.allow_reports_exports && plan?.allow_reports_exports === true,
   };
 }
 

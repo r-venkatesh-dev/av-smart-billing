@@ -18,6 +18,7 @@ type Plan = {
   features: string[];
   allowOnlineBilling: boolean;
   allowCloudBackup: boolean;
+  allowReportsExports: boolean;
   maxDevices: number;
   validationWindowDays: number;
   priceInPaise: number;
@@ -115,6 +116,7 @@ export function SubscriptionCheckout({
   const [licenseKey, setLicenseKey] = useState("");
   const [licenseExpiresAt, setLicenseExpiresAt] = useState("");
   const [copied, setCopied] = useState(false);
+  const [finishConfirmOpen, setFinishConfirmOpen] = useState(false);
   const selectedPlan = useMemo(
     () => plans.find((plan) => plan.id === selectedPlanId),
     [plans, selectedPlanId],
@@ -129,6 +131,22 @@ export function SubscriptionCheckout({
     window.addEventListener("beforeunload", warn);
     return () => window.removeEventListener("beforeunload", warn);
   }, [licenseKey]);
+
+  useEffect(() => {
+    if (!finishConfirmOpen) return;
+
+    const previousOverflow = document.body.style.overflow;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setFinishConfirmOpen(false);
+    };
+
+    document.body.style.overflow = "hidden";
+    window.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [finishConfirmOpen]);
 
   function update(field: keyof Details, value: string) {
     setDetails((current) => ({
@@ -262,19 +280,19 @@ export function SubscriptionCheckout({
   }
 
   function finish() {
-    if (
-      window.confirm(
-        "Did you copy and save the activation key? You cannot view it again after leaving this page.",
-      )
-    ) {
-      setLicenseKey("");
-      setLicenseExpiresAt("");
-      router.push("/products");
-    }
+    setFinishConfirmOpen(true);
+  }
+
+  function confirmFinish() {
+    setFinishConfirmOpen(false);
+    setLicenseKey("");
+    setLicenseExpiresAt("");
+    router.push("/products");
   }
 
   if (step === "SUCCESS")
     return (
+      <>
       <section className="mx-auto max-w-2xl border border-emerald-300 bg-white p-5 shadow-sm sm:p-6">
         <div className="flex items-start gap-4">
           <span className="grid size-12 shrink-0 place-items-center bg-emerald-50 text-emerald-700">
@@ -325,6 +343,67 @@ export function SubscriptionCheckout({
           I saved the key — continue
         </button>
       </section>
+
+      {finishConfirmOpen ? (
+        <div
+          className="fixed inset-0 z-[100] grid place-items-center bg-[#171b36]/65 p-4 backdrop-blur-[2px]"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setFinishConfirmOpen(false);
+          }}
+        >
+          <section
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="save-key-confirmation-title"
+            aria-describedby="save-key-confirmation-description"
+            className="w-full max-w-md overflow-hidden border border-[#dfe3e1] bg-white text-[#26272a] shadow-2xl"
+          >
+            <div className="border-b border-[#dfe3e1] bg-[#f4fbfa] px-5 py-4 sm:px-6">
+              <div className="flex items-center gap-3">
+                <span className="grid size-11 shrink-0 place-items-center rounded-full bg-[#d9efec] text-[#057c73]">
+                  <ShieldCheck size={23} />
+                </span>
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-[.15em] text-[#057c73]">
+                    Final confirmation
+                  </p>
+                  <h2 id="save-key-confirmation-title" className="mt-1 text-xl font-bold sm:text-2xl">
+                    Have you safely saved the key?
+                  </h2>
+                </div>
+              </div>
+            </div>
+
+            <div className="px-5 py-5 sm:px-6">
+              <p id="save-key-confirmation-description" className="text-sm leading-6 text-[#5f6663]">
+                This activation key is shown only once. After you continue, the full key will be cleared from this page and cannot be viewed again.
+              </p>
+              <div className="mt-4 border border-amber-300 bg-amber-50 p-3 text-xs font-semibold leading-5 text-amber-900">
+                Make sure you copied it to a secure place before continuing.
+              </div>
+
+              <div className="mt-5 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+                <button
+                  type="button"
+                  autoFocus
+                  onClick={() => setFinishConfirmOpen(false)}
+                  className="h-11 border border-[#cfd5d2] px-5 text-xs font-bold uppercase tracking-[.08em] text-[#475467] transition hover:bg-[#f4f5f4]"
+                >
+                  Not yet — go back
+                </button>
+                <button
+                  type="button"
+                  onClick={confirmFinish}
+                  className="h-11 bg-[#057c73] px-5 text-xs font-bold uppercase tracking-[.08em] text-white transition hover:bg-[#046c64]"
+                >
+                  Yes, I saved it
+                </button>
+              </div>
+            </div>
+          </section>
+        </div>
+      ) : null}
+      </>
     );
 
   return (
@@ -439,7 +518,7 @@ export function SubscriptionCheckout({
                     {plan.validationWindowDays}-day offline validation
                   </span>
                   <span className="mt-1 block text-xs font-medium text-[#475467]">
-                    {plan.allowOnlineBilling ? "Offline + Online billing" : "Offline billing only"} · {plan.allowCloudBackup ? "Cloud backup" : "No cloud backup"}
+                    {plan.allowOnlineBilling ? "Offline + Online billing" : "Offline billing only"} · {plan.allowCloudBackup ? "Cloud backup" : "No cloud backup"} · {plan.allowReportsExports ? "Reports & exports" : "No reports or exports"}
                   </span>
                   {plan.features.length ? (
                     <ul className="mt-3 space-y-1.5 border-t border-[#dfe3e1] pt-3 text-xs text-[#475467]">

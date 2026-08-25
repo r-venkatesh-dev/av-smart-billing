@@ -8,5 +8,5 @@ export default async function BillingLayout({ children }: { children: ReactNode 
   await connection();
   const access = await getBillingAccess();
   if (!access) redirect("/activate?reason=session-required");
-  return <AppShell mode="billing" user={{ fullName: access.displayName, role: access.role }}>{children}</AppShell>;
+  return <AppShell mode="billing" user={{ fullName: access.displayName, role: access.role }} allowReportsExports={access.allowReportsExports}>{children}</AppShell>;
 }

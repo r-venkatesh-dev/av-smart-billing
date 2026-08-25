@@ -15,13 +15,19 @@ export async function getLicensedSession(): Promise<LicenseGrant | null> {
     const grant = await verifyLicenseGrant(token);
     const admin = createAdminClient();
     const [license, device] = await Promise.all([
-      admin.from("licenses").select("status, expires_at, customers(status), plans(status)").eq("id", grant.licenseId).maybeSingle(),
+      admin.from("licenses").select("status, expires_at, allow_reports_exports, customers(status), plans(status, allow_reports_exports)").eq("id", grant.licenseId).maybeSingle(),
       admin.from("devices").select("status, license_id").eq("id", grant.deviceId).maybeSingle(),
     ]);
     const customer = Array.isArray(license.data?.customers) ? license.data.customers[0] : license.data?.customers;
     const plan = Array.isArray(license.data?.plans) ? license.data.plans[0] : license.data?.plans;
     if (!license.data || license.data.status !== "ACTIVE" || new Date(license.data.expires_at) <= new Date() || customer?.status !== "ACTIVE" || plan?.status !== "ACTIVE" || !device.data || device.data.status !== "ACTIVE" || device.data.license_id !== grant.licenseId) return null;
-    return grant;
+    return {
+      ...grant,
+      allowReportsExports:
+        grant.allowReportsExports &&
+        license.data.allow_reports_exports === true &&
+        plan?.allow_reports_exports === true,
+    };
   } catch {
     return null;
   }
@@ -29,13 +35,13 @@ export async function getLicensedSession(): Promise<LicenseGrant | null> {
 
 export async function getBillingAccess() {
   const admin = await getCurrentAdmin();
-  if (admin) return { kind: "admin" as const, actorId: admin.id, displayName: admin.fullName, role: admin.role, licenseId: null };
+  if (admin) return { kind: "admin" as const, actorId: admin.id, displayName: admin.fullName, role: admin.role, licenseId: null, allowReportsExports: true };
   const license = await getLicensedSession();
   if (!license) return null;
   const privileged = createAdminClient();
   const row = await privileged.from("licenses").select("created_by").eq("id", license.licenseId).single();
   if (row.error) return null;
-  return { kind: "license" as const, actorId: row.data.created_by, displayName: license.customerName, role: "LICENSED" as const, licenseId: license.licenseId };
+  return { kind: "license" as const, actorId: row.data.created_by, displayName: license.customerName, role: "LICENSED" as const, licenseId: license.licenseId, allowReportsExports: license.allowReportsExports };
 }
 
 export async function requireBillingAccess(allowedAdminRoles?: readonly AdminRole[]) {

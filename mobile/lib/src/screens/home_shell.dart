@@ -179,6 +179,24 @@ class _HomeShellState extends State<HomeShell> {
     },
     onReports: () {
       Navigator.pop(context);
+      if (widget.controller.session?.allowReportsExports != true) {
+        showDialog<void>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('Reports & Exports are not included'),
+            content: const Text(
+              'Your current plan does not include reports or CSV, Excel, and PDF exports. Upgrade your plan and activate the new key to use this feature.',
+            ),
+            actions: [
+              FilledButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('OK'),
+              ),
+            ],
+          ),
+        );
+        return;
+      }
       _openPage(
         widget.controller.isOnline
             ? OnlineFoundationScreen(
@@ -486,11 +504,12 @@ class _AppDrawer extends StatelessWidget {
                   label: 'Customers',
                   onTap: onCustomers,
                 ),
-                _DrawerItem(
-                  icon: Icons.analytics_outlined,
-                  label: 'Reports & Exports',
-                  onTap: onReports,
-                ),
+                if (controller.session?.allowReportsExports == true)
+                  _DrawerItem(
+                    icon: Icons.analytics_outlined,
+                    label: 'Reports & Exports',
+                    onTap: onReports,
+                  ),
                 _DrawerItem(
                   icon: Icons.cloud_upload_outlined,
                   label: 'Cloud Backup',

@@ -3,8 +3,11 @@ import { PageHeader } from "@/components/ui";
 import { WorkspaceRequired } from "@/components/workspace-required";
 import { getBillingReport } from "@/data/billing";
 import { formatMoney } from "@/lib/format";
+import { getBillingAccess } from "@/lib/billing-access";
 
 export default async function Page() {
+  const access = await getBillingAccess();
+  if (access?.kind === "license" && !access.allowReportsExports) return <div className="space-y-7"><PageHeader eyebrow="Plan capability" title="Reports & Exports" description="This feature is not included in your current plan." /><p className="surface p-6 text-sm leading-6 text-[#667085]">Upgrade your plan and validate the new activation to access business reports and supported exports.</p></div>;
   const report = await getBillingReport();
   if (!report) return <div className="space-y-7"><PageHeader eyebrow="Billing desk" title="Reports" description="Set up a workspace to generate reports." /><WorkspaceRequired /></div>;
   const cards = [["Monthly sales", formatMoney(report.salesInPaise), IndianRupee], ["Tax collected", formatMoney(report.taxInPaise), Scale], ["Payments received", formatMoney(report.paymentsInPaise), WalletCards], ["Invoices issued", String(report.invoiceCount), ReceiptText]] as const;

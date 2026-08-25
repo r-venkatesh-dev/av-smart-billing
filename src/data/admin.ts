@@ -71,7 +71,7 @@ export async function listAdminPlans() {
   const supabase = await createSupabaseServerClient();
   const { data, error } = await supabase
     .from("plans")
-    .select("id, name, description, features, allow_online_billing, allow_cloud_backup, is_publicly_visible, max_devices, validation_window_days, price_in_paise, interval, status")
+    .select("id, name, description, features, allow_online_billing, allow_cloud_backup, allow_reports_exports, is_publicly_visible, max_devices, validation_window_days, price_in_paise, interval, status")
     .order("price_in_paise");
   return assertQuery(data, error).map((row) => ({
     id: row.id,
@@ -80,6 +80,7 @@ export async function listAdminPlans() {
     features: Array.isArray(row.features) ? row.features.filter((feature): feature is string => typeof feature === "string") : [],
     allowOnlineBilling: row.allow_online_billing,
     allowCloudBackup: row.allow_cloud_backup,
+    allowReportsExports: row.allow_reports_exports,
     isPubliclyVisible: row.is_publicly_visible,
     maxDevices: row.max_devices,
     validationWindowDays: row.validation_window_days,

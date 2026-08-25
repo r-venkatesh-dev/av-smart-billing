@@ -10,6 +10,7 @@ class LicenseSession {
     required this.validUntil,
     required this.allowOnlineBilling,
     required this.allowCloudBackup,
+    required this.allowReportsExports,
   });
 
   final String token;
@@ -22,6 +23,7 @@ class LicenseSession {
   final DateTime validUntil;
   final bool allowOnlineBilling;
   final bool allowCloudBackup;
+  final bool allowReportsExports;
 
   bool get isActive => DateTime.now().isBefore(validUntil);
   Map<String, Object?> toJson() => {
@@ -35,6 +37,7 @@ class LicenseSession {
     'validUntil': validUntil.toIso8601String(),
     'allowOnlineBilling': allowOnlineBilling,
     'allowCloudBackup': allowCloudBackup,
+    'allowReportsExports': allowReportsExports,
   };
   factory LicenseSession.fromJson(Map<String, dynamic> json) => LicenseSession(
     token: json['token'] as String,
@@ -47,6 +50,7 @@ class LicenseSession {
     validUntil: DateTime.parse(json['validUntil'] as String),
     allowOnlineBilling: json['allowOnlineBilling'] as bool? ?? true,
     allowCloudBackup: json['allowCloudBackup'] as bool? ?? true,
+    allowReportsExports: json['allowReportsExports'] as bool? ?? true,
   );
 }
 

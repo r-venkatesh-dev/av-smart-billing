@@ -22,6 +22,7 @@ export const planSchema = z.object({
   features: z.array(z.string().trim().min(2).max(120)).max(20),
   allowOnlineBilling: z.boolean(),
   allowCloudBackup: z.boolean(),
+  allowReportsExports: z.boolean(),
   isPubliclyVisible: z.boolean(),
   maxDevices: z.coerce.number().int().min(1).max(100),
   validationWindowDays: z.coerce.number().int().min(1).max(365),

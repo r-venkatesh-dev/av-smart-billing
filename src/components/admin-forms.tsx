@@ -165,6 +165,7 @@ export function PlanForm({
     features: string[];
     allowOnlineBilling: boolean;
     allowCloudBackup: boolean;
+    allowReportsExports: boolean;
     isPubliclyVisible: boolean;
     maxDevices: number;
     validationWindowDays: number;
@@ -317,8 +318,8 @@ export function PlanForm({
         </label>
         <fieldset className="sm:col-span-2">
           <legend className="text-sm font-semibold">Licensed capabilities</legend>
-          <p className="mt-0.5 text-xs text-[#667085]">Turn both off for an offline-only Trial plan. These permissions are copied to each new license.</p>
-          <div className="mt-3 grid gap-3 sm:grid-cols-2">
+          <p className="mt-0.5 text-xs text-[#667085]">Choose the capabilities included with this plan. These permissions are copied to each new license.</p>
+          <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             <label className="flex items-start gap-3 rounded-xl border border-[#dfe3eb] p-4">
               <input name="allowOnlineBilling" type="checkbox" defaultChecked={plan?.allowOnlineBilling ?? true} className="mt-0.5 size-4 accent-[#057c73]" />
               <span><strong className="block text-sm">Offline + Online billing</strong><span className="mt-1 block text-xs text-[#667085]">Offline billing is always included. Enable this to also use cloud products, customers and online billing APIs.</span></span>
@@ -326,6 +327,10 @@ export function PlanForm({
             <label className="flex items-start gap-3 rounded-xl border border-[#dfe3eb] p-4">
               <input name="allowCloudBackup" type="checkbox" defaultChecked={plan?.allowCloudBackup ?? true} className="mt-0.5 size-4 accent-[#057c73]" />
               <span><strong className="block text-sm">Cloud backup</strong><span className="mt-1 block text-xs text-[#667085]">Upload or restore billing data through cloud backup.</span></span>
+            </label>
+            <label className="flex items-start gap-3 rounded-xl border border-[#dfe3eb] p-4">
+              <input name="allowReportsExports" type="checkbox" defaultChecked={plan?.allowReportsExports ?? true} className="mt-0.5 size-4 accent-[#057c73]" />
+              <span><strong className="block text-sm">Reports &amp; exports</strong><span className="mt-1 block text-xs text-[#667085]">View sales reports and export supported data as CSV, Excel, or PDF.</span></span>
             </label>
           </div>
         </fieldset>

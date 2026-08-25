@@ -34,10 +34,10 @@ const billingNav: NavItem[] = [
   { label: "Settings", href: "/billing/settings", icon: Settings },
 ];
 
-export function AppShell({ mode, children, user }: { mode: "admin" | "billing"; children: ReactNode; user?: { fullName: string; role: string } }) {
+export function AppShell({ mode, children, user, allowReportsExports = true }: { mode: "admin" | "billing"; children: ReactNode; user?: { fullName: string; role: string }; allowReportsExports?: boolean }) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
-  const items = mode === "admin" ? adminNav : billingNav;
+  const items = mode === "admin" ? adminNav : billingNav.filter((item) => allowReportsExports || item.href !== "/billing/reports");
   const productName = mode === "admin" ? "Control Center" : "Billing Desk";
 
   return (
