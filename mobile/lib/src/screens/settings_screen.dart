@@ -63,7 +63,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Future<void> _changeActivationKey() async {
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
+      builder: (dialogContext) => AppDialog(
+        icon: Icons.vpn_key_off_outlined,
         title: const Text('Change activation key?'),
         content: const Text(
           'This will sign out the current license and return to the activation screen. Products, customers, invoices, held bills and business settings stored on this phone will remain safe.\n\nAny items in the current unheld sale may be cleared. Internet is required to activate the new key.',

@@ -3,19 +3,23 @@ import "server-only";
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { z } from "zod";
 
+const subscriptionIssuerSchema = z.uuid();
+
 const envSchema = z.object({
   RAZORPAY_KEY_ID: z.string().min(4),
   RAZORPAY_KEY_SECRET: z.string().min(8),
   RAZORPAY_WEBHOOK_SECRET: z.string().min(8),
-  SUBSCRIPTION_LICENSE_CREATED_BY: z.uuid(),
 });
+
+export function getSubscriptionLicenseCreatedBy() {
+  return subscriptionIssuerSchema.parse(process.env.SUBSCRIPTION_LICENSE_CREATED_BY);
+}
 
 export function getRazorpayEnv() {
   return envSchema.parse({
     RAZORPAY_KEY_ID: process.env.RAZORPAY_KEY_ID,
     RAZORPAY_KEY_SECRET: process.env.RAZORPAY_KEY_SECRET,
     RAZORPAY_WEBHOOK_SECRET: process.env.RAZORPAY_WEBHOOK_SECRET,
-    SUBSCRIPTION_LICENSE_CREATED_BY: process.env.SUBSCRIPTION_LICENSE_CREATED_BY,
   });
 }
 
@@ -85,4 +89,3 @@ export function verifyWebhookSignature(rawBody: string, signature: string) {
     .digest("hex");
   return signaturesMatch(expected, signature);
 }
-

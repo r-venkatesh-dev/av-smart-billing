@@ -101,7 +101,7 @@ class _ActivationScreenState extends State<ActivationScreen> {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'Offline billing for your shop',
+                  'Seamless billing, online or offline',
                   textAlign: TextAlign.center,
                   style: TextStyle(color: Colors.grey.shade600, fontSize: 16),
                 ),
@@ -114,14 +114,19 @@ class _ActivationScreenState extends State<ActivationScreen> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
-                          Text(
-                            'Activate this phone',
-                            style: Theme.of(context).textTheme.titleLarge
-                                ?.copyWith(fontWeight: FontWeight.bold),
+                          Center(
+                            child: Text(
+                              'Activate this device',
+                              style: Theme.of(context).textTheme.titleLarge
+                                  ?.copyWith(fontWeight: FontWeight.bold),
+                            ),
                           ),
                           const SizedBox(height: 8),
-                          const Text(
-                            'Internet is required only for activation and periodic license validation.',
+                          Center(
+                            child: Text(
+                              'Internet is required only for activation and periodic license validation.',
+                              textAlign: TextAlign.center,
+                            ),
                           ),
                           const SizedBox(height: 20),
                           TextFormField(
@@ -169,12 +174,12 @@ class _ActivationScreenState extends State<ActivationScreen> {
                             ),
                           ),
                           const SizedBox(height: 10),
-                          TextButton.icon(
+                          OutlinedButton.icon(
                             onPressed: _busy ? null : _openSubscriptionPage,
                             icon: const Icon(Icons.open_in_browser),
                             label: const Text('Get your activation key'),
-                            style: TextButton.styleFrom(
-                              minimumSize: const Size.fromHeight(48),
+                            style: OutlinedButton.styleFrom(
+                              minimumSize: const Size.fromHeight(52),
                             ),
                           ),
                         ],
@@ -182,18 +187,18 @@ class _ActivationScreenState extends State<ActivationScreen> {
                     ),
                   ),
                 ),
-                const SizedBox(height: 16),
-                const Row(
-                  children: [
-                    Icon(Icons.cloud_off, size: 18),
-                    SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        'Products, invoices and customers stay on this phone and work offline.',
-                      ),
-                    ),
-                  ],
-                ),
+                // const SizedBox(height: 16),
+                // const Row(
+                //   children: [
+                //     Icon(Icons.cloud_off, size: 18),
+                //     SizedBox(width: 8),
+                //     Expanded(
+                //       child: Text(
+                //         'Products, invoices and customers stay on this phone and work offline.',
+                //       ),
+                //     ),
+                //   ],
+                // ),
               ],
             ),
           ),

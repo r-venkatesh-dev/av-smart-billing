@@ -116,7 +116,8 @@ class _ProductEditorDialogState extends State<ProductEditorDialog> {
   }
 
   @override
-  Widget build(BuildContext context) => AlertDialog(
+  Widget build(BuildContext context) => AppDialog(
+    icon: Icons.inventory_2_outlined,
     title: Text(widget.product == null ? 'Add product' : 'Edit product'),
     content: SizedBox(
       width: 460,
@@ -323,7 +324,8 @@ class _CustomerEditorDialogState extends State<CustomerEditorDialog> {
   }
 
   @override
-  Widget build(BuildContext context) => AlertDialog(
+  Widget build(BuildContext context) => AppDialog(
+    icon: Icons.person_add_alt_1_outlined,
     title: Text(widget.customer == null ? 'Add customer' : 'Edit customer'),
     content: SizedBox(
       width: 440,
@@ -473,7 +475,8 @@ class _BusinessEditorDialogState extends State<BusinessEditorDialog> {
   }
 
   @override
-  Widget build(BuildContext context) => AlertDialog(
+  Widget build(BuildContext context) => AppDialog(
+    icon: Icons.storefront_outlined,
     title: const Text('Business settings'),
     content: SizedBox(
       width: 460,
@@ -607,7 +610,8 @@ class _CheckoutSheetState extends State<CheckoutSheet> {
     );
     final value = await showDialog<double>(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (context) => AppDialog(
+        icon: Icons.percent_rounded,
         title: Text('${line.product.name} discount'),
         content: TextField(
           controller: controller,
@@ -689,7 +693,9 @@ class _CheckoutSheetState extends State<CheckoutSheet> {
   Future<void> _cancel() async {
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (context) => AppDialog(
+        icon: Icons.delete_sweep_outlined,
+        danger: true,
         title: const Text('Cancel this bill?'),
         content: const Text(
           'All added products will be removed. No invoice will be created and stock will not change.',

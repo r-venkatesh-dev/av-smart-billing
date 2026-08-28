@@ -21,6 +21,7 @@
       "database.cjs",
       "license.cjs",
       "cloud.cjs",
+      "preferences.cjs",
       "renderer/**/*",
       "package.json"
     ],

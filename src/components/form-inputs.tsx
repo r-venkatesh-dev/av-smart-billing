@@ -32,28 +32,14 @@ function configureInput(input: HTMLInputElement) {
 
 export function GlobalInputRules() {
   useEffect(() => {
-    const configureAll = (root: ParentNode) => {
-      root.querySelectorAll<HTMLInputElement>("input").forEach(configureInput);
-    };
     const handleInput = (event: Event) => {
       if (!(event.target instanceof HTMLInputElement)) return;
       configureInput(event.target);
       if (isPhoneInput(event.target)) event.target.value = digitsOnly(event.target.value);
       if (event.target.name === "licenseKey") event.target.value = formatLicenseKey(event.target.value);
     };
-    configureAll(document);
-    const observer = new MutationObserver((records) => {
-      for (const record of records) {
-        for (const node of record.addedNodes) {
-          if (node instanceof HTMLInputElement) configureInput(node);
-          if (node instanceof Element) configureAll(node);
-        }
-      }
-    });
-    observer.observe(document.body, { childList: true, subtree: true });
     document.addEventListener("input", handleInput, true);
     return () => {
-      observer.disconnect();
       document.removeEventListener("input", handleInput, true);
     };
   }, []);

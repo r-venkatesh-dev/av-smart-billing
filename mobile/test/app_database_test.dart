@@ -99,6 +99,75 @@ void main() {
   });
 
   test(
+    'marks a due invoice as paid without changing stock or totals',
+    () async {
+      await database.saveProduct(
+        name: 'Credit notebook',
+        sku: 'CREDIT-BOOK-1',
+        barcode: '',
+        unit: 'pcs',
+        price: 100,
+        taxRate: 18,
+        discountPercent: 0,
+        stock: 5,
+      );
+      final product = (await database.products()).single;
+      final id = await database.createInvoice(
+        customer: null,
+        walkInName: 'Credit Customer',
+        walkInPhone: '',
+        lines: [CartLine(product: product, quantity: 2)],
+        paymentMethod: 'CREDIT',
+      );
+      final dueInvoice = await database.invoice(id);
+      expect(dueInvoice.invoice['status'], 'DUE');
+
+      await database.markInvoicePaid(id, 'UPI_QR');
+
+      final paidInvoice = await database.invoice(id);
+      expect(paidInvoice.invoice['status'], 'PAID');
+      expect(paidInvoice.invoice['payment_method'], 'UPI_QR');
+      expect(paidInvoice.invoice['total_in_paise'], 23600);
+      expect((await database.products()).single.stockQuantity, 3);
+
+      final report = await database.salesReport(
+        DateTime.now().subtract(const Duration(days: 1)),
+        DateTime.now().add(const Duration(days: 1)),
+      );
+      expect(report.collected, 23600);
+      expect(report.outstanding, 0);
+      expect(report.paymentTotals['UPI_QR'], 23600);
+    },
+  );
+
+  test('does not mark a paid invoice as paid again', () async {
+    await database.saveProduct(
+      name: 'Paid notebook',
+      sku: 'PAID-BOOK-1',
+      barcode: '',
+      unit: 'pcs',
+      price: 100,
+      taxRate: 0,
+      discountPercent: 0,
+      stock: 1,
+    );
+    final product = (await database.products()).single;
+    final id = await database.createInvoice(
+      customer: null,
+      walkInName: 'Paid Customer',
+      walkInPhone: '',
+      lines: [CartLine(product: product)],
+      paymentMethod: 'CASH',
+    );
+
+    await expectLater(
+      database.markInvoicePaid(id, 'CARD'),
+      throwsA(predicate((error) => error.toString().contains('no longer due'))),
+    );
+    expect((await database.invoice(id)).invoice['payment_method'], 'CASH');
+  });
+
+  test(
     'saves a new checkout customer atomically and reuses their mobile',
     () async {
       await database.saveProduct(

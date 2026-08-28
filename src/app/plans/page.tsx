@@ -17,14 +17,14 @@ export default async function PublicPlansPage() {
     .select("id, name, description, features, allow_online_billing, allow_cloud_backup, allow_reports_exports, is_publicly_visible, max_devices, validation_window_days, price_in_paise, interval, status")
     .or("status.eq.ACTIVE,is_publicly_visible.eq.true")
     .order("price_in_paise");
-  const plans = error ? [] : (data ?? []).filter((plan) => (plan.status === "ACTIVE" && Number(plan.price_in_paise) > 0) || (plan.status === "INACTIVE" && plan.is_publicly_visible));
+  const plans = error ? [] : (data ?? []).filter((plan) => plan.status === "ACTIVE" || (plan.status === "INACTIVE" && plan.is_publicly_visible));
 
   return (
     <PublicSite>
       <PublicPageIntro
         eyebrow="Plans and pricing"
         title="Choose the plan that fits your shop."
-        description="Every public plan includes secure activation and the device/offline limits shown below. Select a plan to continue to the purchase form and Razorpay checkout."
+        description="Every public plan includes secure activation and the device/offline limits shown below. Free plans activate directly; paid plans continue through Razorpay checkout."
       />
       <section className="mx-auto max-w-6xl px-4 py-7 sm:px-5 sm:py-8">
         {error ? (
@@ -32,7 +32,8 @@ export default async function PublicPlansPage() {
         ) : plans.length ? (
           <div className="grid items-start gap-4 md:grid-cols-2 xl:grid-cols-3">
             {plans.map((plan) => {
-              const purchasable = plan.status === "ACTIVE" && Number(plan.price_in_paise) > 0;
+              const purchasable = plan.status === "ACTIVE";
+              const isFree = Number(plan.price_in_paise) === 0;
               const features = Array.isArray(plan.features)
                 ? plan.features.filter((feature): feature is string => typeof feature === "string")
                 : [];
@@ -40,7 +41,7 @@ export default async function PublicPlansPage() {
                 <article key={plan.id} className="border border-[#dfe3e1] bg-white p-5">
                   <div className="flex items-start justify-between gap-3">
                     <div><h2 className="text-2xl">{plan.name}</h2><p className="mt-1 text-xs leading-5 text-[#6d716f]">{plan.description}</p></div>
-                    <span className="shrink-0 bg-[#e6f2f0] px-2.5 py-1.5 text-[9px] font-bold uppercase tracking-[.1em] text-[#057c73]">{purchasable ? "Available" : "Coming soon"}</span>
+                    <span className="shrink-0 bg-[#e6f2f0] px-2.5 py-1.5 text-[9px] font-bold uppercase tracking-[.1em] text-[#057c73]">{purchasable ? (isFree ? "Free" : "Available") : "Coming soon"}</span>
                   </div>
                   <p className="mt-4"><strong className="text-3xl tracking-[-.04em]">{formatMoney(Number(plan.price_in_paise))}</strong><span className="text-xs text-[#6d716f]"> / {String(plan.interval).toLowerCase()}</span></p>
                   <div className="my-4 h-px bg-[#dfe3e1]" />

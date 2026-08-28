@@ -59,6 +59,14 @@ export const billingPosSchema = z.object({
   if (!requiredMobileNumber.safeParse(value.walkInPhone).success) context.addIssue({ code: "custom", path: ["walkInPhone"], message: "Enter a valid 10-digit mobile number." });
 });
 
+export const billingHeldBillSchema = z.object({
+  items: z.array(z.object({
+    productId: z.string().uuid(),
+    quantity: z.coerce.number().positive().max(1000000),
+    discountPercent: z.coerce.number().min(0).max(100),
+  })).min(1).max(200),
+});
+
 export const billingStockAdjustmentSchema = z.object({
   productId: z.string().uuid(),
   movementType: z.enum(["PURCHASE", "RETURN", "ADJUSTMENT"]),

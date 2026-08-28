@@ -7,6 +7,7 @@ import { publicBusiness } from "@/lib/public-business";
 const primaryLinks = [
   { href: "/", label: "Home" },
   { href: "/products", label: "Products" },
+  { href: "/downloads", label: "Downloads" },
   { href: "/plans", label: "Plans" },
   { href: "/about", label: "About" },
   { href: "/contact", label: "Contact" },

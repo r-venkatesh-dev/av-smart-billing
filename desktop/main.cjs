@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-require-imports -- Electron entrypoint uses CommonJS without changing the Next.js module mode. */
-const { app, BrowserWindow, Menu, ipcMain, safeStorage, session } = require("electron");
+const { app, BrowserWindow, Menu, dialog, ipcMain, safeStorage, session, shell, systemPreferences } = require("electron");
 const { randomUUID } = require("node:crypto");
 const fs = require("node:fs");
 const os = require("node:os");
@@ -7,12 +7,14 @@ const path = require("node:path");
 const { createBillingDatabase } = require("./database.cjs");
 const { createCloudClient } = require("./cloud.cjs");
 const { createLicenseStore } = require("./license.cjs");
+const { createDesktopPreferences } = require("./preferences.cjs");
 
 const PRODUCT_NAME = "AV Smartbilling";
 let mainWindow = null;
 let database = null;
 let licenses = null;
 let cloud = null;
+let preferences = null;
 
 function readApplicationUrl() {
   let configuredUrl = process.env.AVSB_APP_URL;
@@ -70,7 +72,7 @@ function initializeBillingName(customerName) {
 }
 
 function registerIpc() {
-  expose("app:bootstrap", () => ({ license: licenses.status(), device: getDeviceIdentity(), business: database.getBusiness() }), { licenseRequired: false });
+  expose("app:bootstrap", () => ({ license: licenses.status(), device: getDeviceIdentity(), business: database.getBusiness(), security: preferences.status() }), { licenseRequired: false });
   expose("license:activate", async (input) => {
     const identity = getDeviceIdentity();
     const licenseKey = String(input.licenseKey || "").trim().toUpperCase();
@@ -109,7 +111,77 @@ function registerIpc() {
   expose("billing:record-payment", (input) => database.recordPayment(input));
   expose("billing:settings", () => database.getBusiness());
   expose("billing:save-settings", (input) => database.saveSettings(input));
-  expose("billing:reports", () => database.reports());
+  expose("billing:reports", (input) => database.reports(input));
+
+  expose("security:status", () => preferences.status(), { licenseRequired: false });
+  expose("security:configure", (input) => preferences.configurePin(String(input.pin || ""), input.inactivityMinutes));
+  expose("security:verify", (input) => ({ valid: preferences.verifyPin(String(input.pin || "")) }), { licenseRequired: false });
+  expose("security:disable", (input) => preferences.disable(String(input.pin || "")));
+  expose("security:biometric", async () => {
+    if (process.platform !== "darwin") throw new Error("Operating-system biometric unlock is currently available on macOS only.");
+    await systemPreferences.promptTouchID("Unlock AV Smartbilling");
+    preferences.record("APP_UNLOCKED", "Touch ID verified");
+    return { valid: true };
+  }, { licenseRequired: false });
+  expose("activity:list", () => preferences.activity());
+
+  expose("payment-qr:pick", async () => {
+    const selected = await dialog.showOpenDialog(mainWindow, { title: "Choose payment QR image", properties: ["openFile"], filters: [{ name: "Images", extensions: ["png", "jpg", "jpeg", "webp"] }] });
+    if (selected.canceled || !selected.filePaths[0]) return { canceled: true };
+    const source = selected.filePaths[0];
+    const extension = path.extname(source).toLowerCase() || ".png";
+    const destination = path.join(app.getPath("userData"), `payment-qr${extension}`);
+    fs.copyFileSync(source, destination);
+    preferences.setPaymentQrPath(destination);
+    return { canceled: false };
+  });
+  expose("payment-qr:get", () => {
+    const qrPath = preferences.paymentQrPath();
+    if (!qrPath || !fs.existsSync(qrPath)) return { configured: false };
+    const extension = path.extname(qrPath).toLowerCase();
+    const mime = extension === ".webp" ? "image/webp" : extension === ".png" ? "image/png" : "image/jpeg";
+    return { configured: true, dataUrl: `data:${mime};base64,${fs.readFileSync(qrPath).toString("base64")}` };
+  });
+  expose("payment-qr:remove", () => {
+    const qrPath = preferences.paymentQrPath();
+    if (qrPath && fs.existsSync(qrPath)) fs.unlinkSync(qrPath);
+    preferences.setPaymentQrPath(null);
+    return { message: "Payment QR removed." };
+  });
+
+  expose("file:save-export", async (input) => {
+    const format = ["csv", "xls"].includes(input.format) ? input.format : null;
+    if (!format || typeof input.content !== "string" || input.content.length > 10_000_000) throw new Error("Invalid export data.");
+    const result = await dialog.showSaveDialog(mainWindow, { defaultPath: `${String(input.fileName || "report").replace(/[^a-z0-9_-]/gi, "-")}.${format}`, filters: [{ name: format === "csv" ? "CSV" : "Excel", extensions: [format] }] });
+    if (result.canceled || !result.filePath) return { canceled: true };
+    fs.writeFileSync(result.filePath, input.content, "utf8");
+    preferences.record("REPORT_EXPORTED", `${format.toUpperCase()} · ${path.basename(result.filePath)}`);
+    return { canceled: false, path: result.filePath };
+  });
+  expose("document:save-pdf", async (input) => {
+    const result = await dialog.showSaveDialog(mainWindow, { defaultPath: `${String(input.fileName || "document").replace(/[^a-z0-9_-]/gi, "-")}.pdf`, filters: [{ name: "PDF", extensions: ["pdf"] }] });
+    if (result.canceled || !result.filePath) return { canceled: true };
+    const pdf = await mainWindow.webContents.printToPDF({ printBackground: true, pageSize: input.pageSize === "A4" ? "A4" : undefined });
+    fs.writeFileSync(result.filePath, pdf);
+    preferences.record(input.kind === "invoice" ? "INVOICE_PDF_SAVED" : "REPORT_EXPORTED", path.basename(result.filePath));
+    return { canceled: false, path: result.filePath };
+  });
+  expose("external:whatsapp", async (input) => {
+    let digits = String(input.phone || "").replace(/\D/g, "");
+    if (digits.length === 11 && digits.startsWith("0")) digits = digits.slice(1);
+    if (digits.length === 10) digits = `91${digits}`;
+    if (!/^\d{11,15}$/.test(digits)) throw new Error("Add a valid customer mobile number before opening WhatsApp.");
+    await shell.openExternal(`https://wa.me/${digits}?text=${encodeURIComponent(String(input.message || "").slice(0, 4000))}`);
+    preferences.record("INVOICE_SHARED", `WhatsApp · ${String(input.invoiceNumber || "")}`);
+    return { opened: true };
+  });
+  expose("external:email", async (input) => {
+    const email = String(input.email || "").trim();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new Error("Add a valid customer email before composing an email.");
+    await shell.openExternal(`mailto:${encodeURIComponent(email)}?subject=${encodeURIComponent(String(input.subject || "Invoice"))}&body=${encodeURIComponent(String(input.body || "").slice(0, 8000))}`);
+    preferences.record("INVOICE_SHARED", `Email · ${String(input.invoiceNumber || "")}`);
+    return { opened: true };
+  });
 
   expose("cloud:status", async () => {
     const record = licenses.requireActive();
@@ -121,7 +193,9 @@ function registerIpc() {
     const snapshot = database.exportSnapshot();
     const envelope = licenses.encryptSnapshot(snapshot);
     const counts = database.counts();
-    return cloud.pushBackup(record.token, { envelope, counts, deviceName: getDeviceIdentity().deviceName, appVersion: app.getVersion() });
+    const result = await cloud.pushBackup(record.token, { envelope, counts, deviceName: getDeviceIdentity().deviceName, appVersion: app.getVersion() });
+    preferences.record("CLOUD_BACKUP_COMPLETED", `${counts.invoices} invoices · ${counts.products} products`);
+    return result;
   });
   expose("cloud:restore", async (input) => {
     const record = licenses.requireActive();
@@ -132,6 +206,7 @@ function registerIpc() {
     const backupPath = path.join(backupDirectory, `before-cloud-restore-${new Date().toISOString().replaceAll(":", "-")}.sqlite`);
     await database.backup(backupPath);
     const restored = database.restoreSnapshot(snapshot);
+    preferences.record("CLOUD_RESTORE_COMPLETED", path.basename(backupPath));
     return { ...restored, backupPath, metadata: result.metadata };
   });
 }
@@ -181,6 +256,7 @@ else {
     database = createBillingDatabase(path.join(userDataPath, "av-smartbilling.sqlite"));
     licenses = createLicenseStore({ userDataPath, safeStorage });
     cloud = createCloudClient(readApplicationUrl());
+    preferences = createDesktopPreferences({ userDataPath, safeStorage });
     registerIpc();
     createWindow();
   }).catch((error) => {

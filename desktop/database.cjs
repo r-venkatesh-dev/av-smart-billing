@@ -225,6 +225,7 @@ function createBillingDatabase(databasePath) {
 
   function dashboard() {
     const business = getBusiness();
+    const todayPrefix = new Date().toISOString().slice(0, 10);
     const counts = db.prepare(`select
       (select count(*) from customers where status='ACTIVE') customers,
       (select count(*) from products where status='ACTIVE') products,
@@ -233,8 +234,11 @@ function createBillingDatabase(databasePath) {
       (select coalesce(sum(total_in_paise),0) from invoices where status <> 'CANCELLED') sales,
       (select coalesce(sum(amount_in_paise),0) from payments) received
     `).get(business.low_stock_threshold);
+    const today = db.prepare(`select count(*) invoices,coalesce(sum(total_in_paise),0) sales from invoices where status<>'CANCELLED' and substr(issued_at,1,10)=?`).get(todayPrefix);
     const recent = db.prepare(`select i.*, coalesce((select sum(amount_in_paise) from payments p where p.invoice_id=i.id),0) paid_in_paise from invoices i order by issued_at desc limit 8`).all();
-    return { business, counts, recent };
+    const lowStock = db.prepare(`select id,name,sku,unit,stock_quantity,coalesce(low_stock_threshold,?) threshold from products where status='ACTIVE' and stock_quantity<=coalesce(low_stock_threshold,?) order by stock_quantity asc limit 8`).all(business.low_stock_threshold, business.low_stock_threshold);
+    const trend = db.prepare(`select substr(issued_at,1,10) day,coalesce(sum(total_in_paise),0) sales from invoices where status<>'CANCELLED' and issued_at>=? group by substr(issued_at,1,10) order by day`).all(new Date(Date.now() - 6 * 86400000).toISOString().slice(0, 10));
+    return { business, counts: { ...counts, outstanding: counts.sales - counts.received }, today, recent, lowStock, trend };
   }
 
   function saveCustomer(input) {
@@ -484,11 +488,17 @@ function createBillingDatabase(databasePath) {
     return { message: "Business settings saved locally." };
   }
 
-  function reports() {
-    const monthly = db.prepare(`select substr(issued_at,1,7) month,count(*) invoice_count,sum(total_in_paise) sales from invoices where status<>'CANCELLED' group by substr(issued_at,1,7) order by month desc limit 12`).all().reverse();
-    const totals = db.prepare(`select coalesce(sum(total_in_paise),0) sales,(select coalesce(sum(amount_in_paise),0) from payments) received,count(*) invoices from invoices where status<>'CANCELLED'`).get();
+  function reports(input = {}) {
+    const from = /^\d{4}-\d{2}-\d{2}$/.test(String(input.from || "")) ? `${input.from}T00:00:00.000Z` : "0000-01-01T00:00:00.000Z";
+    const to = /^\d{4}-\d{2}-\d{2}$/.test(String(input.to || "")) ? `${input.to}T23:59:59.999Z` : "9999-12-31T23:59:59.999Z";
+    if (from > to) throw new Error("The report start date must be before the end date.");
+    const monthly = db.prepare(`select substr(issued_at,1,7) month,count(*) invoice_count,sum(total_in_paise) sales from invoices where status<>'CANCELLED' and issued_at between ? and ? group by substr(issued_at,1,7) order by month`).all(from, to);
+    const totals = db.prepare(`select coalesce(sum(total_in_paise),0) sales,count(*) invoices from invoices where status<>'CANCELLED' and issued_at between ? and ?`).get(from, to);
+    totals.received = db.prepare(`select coalesce(sum(p.amount_in_paise),0) received from payments p join invoices i on i.id=p.invoice_id where p.paid_at between ? and ? and i.status<>'CANCELLED'`).get(from, to).received;
     const outstanding = totals.sales - totals.received;
-    return { monthly, totals: { ...totals, outstanding } };
+    const invoices = db.prepare(`select i.invoice_number,i.issued_at,i.customer_name,i.status,i.total_in_paise,coalesce((select sum(amount_in_paise) from payments p where p.invoice_id=i.id),0) paid_in_paise from invoices i where i.status<>'CANCELLED' and i.issued_at between ? and ? order by i.issued_at desc`).all(from, to);
+    const paymentMethods = db.prepare(`select p.method,count(*) payment_count,coalesce(sum(p.amount_in_paise),0) amount_in_paise from payments p join invoices i on i.id=p.invoice_id where p.paid_at between ? and ? and i.status<>'CANCELLED' group by p.method order by amount_in_paise desc`).all(from, to);
+    return { from, to, monthly, invoices, paymentMethods, totals: { ...totals, outstanding } };
   }
 
   function exportSnapshot() {

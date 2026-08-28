@@ -1,8 +1,20 @@
-import { createRazorpayOrder, getRazorpayEnv } from "@/lib/razorpay";
+import { generateLicenseKey, hashLicenseKey, licenseKeyHint } from "@/lib/license-key";
+import { encryptLicenseKey } from "@/lib/license-key-vault";
+import { createRazorpayOrder, getRazorpayEnv, getSubscriptionLicenseCreatedBy } from "@/lib/razorpay";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { subscriptionOrderSchema } from "@/lib/validation/subscription";
 
 export const runtime = "nodejs";
+
+function expiryFor(interval: string) {
+  const expiry = new Date();
+  if (interval === "WEEK") expiry.setDate(expiry.getDate() + 7);
+  else if (interval === "MONTH") expiry.setMonth(expiry.getMonth() + 1);
+  else if (interval === "QUARTER") expiry.setMonth(expiry.getMonth() + 3);
+  else if (interval === "YEAR") expiry.setFullYear(expiry.getFullYear() + 1);
+  else throw new Error("Unsupported plan interval");
+  return expiry.toISOString();
+}
 
 export async function POST(request: Request) {
   const parsed = subscriptionOrderSchema.safeParse(await request.json().catch(() => null));
@@ -29,7 +41,7 @@ export async function POST(request: Request) {
     console.error("Subscription plan lookup failed", planError);
     return Response.json({ ok: false, message: "Plans are temporarily unavailable." }, { status: 500 });
   }
-  if (!plan || Number(plan.price_in_paise) <= 0) {
+  if (!plan || Number(plan.price_in_paise) < 0) {
     return Response.json({ ok: false, message: "The selected plan is not available for online purchase." }, { status: 409 });
   }
 
@@ -55,6 +67,41 @@ export async function POST(request: Request) {
     return Response.json({ ok: false, message: "Unable to start this purchase. Please try again." }, { status: 500 });
   }
 
+  if (purchase.amount_in_paise === 0) {
+    try {
+      const key = generateLicenseKey();
+      const expiresAt = expiryFor(plan.interval);
+      const { data: completion, error: completionError } = await supabase.rpc("finalize_free_subscription", {
+        p_subscription_order_id: orderRecord.id,
+        p_license_key_hash: hashLicenseKey(key),
+        p_license_key_hint: licenseKeyHint(key),
+        p_license_key_ciphertext: encryptLicenseKey(key),
+        p_expires_at: expiresAt,
+        p_created_by: getSubscriptionLicenseCreatedBy(),
+      });
+      if (completionError) throw new Error(completionError.message);
+      const result = Array.isArray(completion) ? completion[0] : completion;
+      if (!result?.license_id || result.already_completed) {
+        return Response.json({ ok: false, message: "The activation key for this free plan was already issued. Contact support if you did not save it." }, { status: 409 });
+      }
+      return Response.json({
+        ok: true,
+        requiresPayment: false,
+        licenseKey: key,
+        expiresAt,
+        planName: plan.name,
+      }, { headers: { "Cache-Control": "no-store" } });
+    } catch (error) {
+      console.error("Free subscription finalization failed", error);
+      await supabase.from("subscription_orders").update({
+        status: "FAILED",
+        failure_code: "FREE_LICENSE_CREATION_FAILED",
+        failure_description: "Unable to create the free-plan license.",
+      }).eq("id", orderRecord.id).eq("status", "CREATED");
+      return Response.json({ ok: false, message: "Unable to generate the activation key. Please try again or contact support." }, { status: 500 });
+    }
+  }
+
   try {
     const razorpayOrder = await createRazorpayOrder({
       amount: purchase.amount_in_paise,
@@ -69,6 +116,7 @@ export async function POST(request: Request) {
 
     return Response.json({
       ok: true,
+      requiresPayment: true,
       keyId: getRazorpayEnv().RAZORPAY_KEY_ID,
       subscriptionOrderId: orderRecord.id,
       razorpayOrderId: razorpayOrder.id,

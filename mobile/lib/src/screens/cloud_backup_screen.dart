@@ -82,7 +82,8 @@ class _CloudBackupScreenState extends State<CloudBackupScreen> {
   Future<void> _backup(String entity, String label) async {
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (context) => AppDialog(
+        icon: Icons.cloud_upload_outlined,
         title: Text('Back up $label?'),
         content: Text(
           'Are you sure you want to save your $label data to cloud backup?',

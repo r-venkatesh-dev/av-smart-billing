@@ -85,7 +85,7 @@ function formatDateLabel(value: string, placeholder: string) {
   return new Intl.DateTimeFormat("en-IN", { day: "2-digit", month: "long", year: "numeric" }).format(new Date(date.year, date.month, date.day));
 }
 
-export function ThemedDatePicker({ name, label, defaultValue = "", disablePast = true }: { name: string; label: string; defaultValue?: string; disablePast?: boolean }) {
+export function ThemedDatePicker({ name, label, defaultValue = "", disablePast = true, disableFuture = false, required = false }: { name: string; label: string; defaultValue?: string; disablePast?: boolean; disableFuture?: boolean; required?: boolean }) {
   const calendarId = useId();
   const rootRef = useRef<HTMLDivElement>(null);
   const initial = parseDate(defaultValue);
@@ -132,14 +132,14 @@ export function ThemedDatePicker({ name, label, defaultValue = "", disablePast =
 
   return <div ref={rootRef} className="relative">
     <span className="mb-2 block text-sm font-semibold">{label}</span>
-    <input type="hidden" name={name} value={value} />
+    <input type="hidden" name={name} value={value} required={required} />
     <button type="button" onClick={openCalendar} aria-haspopup="dialog" aria-expanded={open} aria-controls={calendarId} className={`focus-ring flex h-11 w-full items-center justify-between border bg-white px-3 text-left text-sm transition ${open ? "border-[#057c73] ring-2 ring-[#057c73]/10" : "border-[#dfe3eb]"}`}><span className={value ? "text-[#26272a]" : "text-[#8a908d]"}>{formatDateLabel(value, `Select ${label.toLowerCase()}`)}</span><CalendarDays size={17} className="text-[#057c73]" /></button>
     {open ? <div id={calendarId} role="dialog" aria-label="Choose due date" className="absolute right-0 z-50 mt-2 w-[310px] border border-[#dfe3e1] bg-white p-4 shadow-[0_18px_45px_rgba(38,39,42,.14)]"><div className="mb-4 flex items-center justify-between"><button type="button" onClick={() => moveMonth(-1)} aria-label="Previous month" className="focus-ring grid size-9 place-items-center border border-[#dfe3e1] text-[#057c73]"><ChevronLeft size={17} /></button><strong className="font-serif text-lg font-semibold">{monthLabel}</strong><button type="button" onClick={() => moveMonth(1)} aria-label="Next month" className="focus-ring grid size-9 place-items-center border border-[#dfe3e1] text-[#057c73]"><ChevronRight size={17} /></button></div><div className="grid grid-cols-7 text-center text-[10px] font-bold uppercase tracking-[.08em] text-[#8a908d]">{["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"].map((day) => <span key={day} className="py-2">{day}</span>)}</div><div className="grid grid-cols-7 gap-1">{Array.from({ length: firstWeekday }, (_, index) => <span key={`blank-${index}`} />)}{Array.from({ length: daysInMonth }, (_, index) => {
       const day = index + 1;
       const candidate = dateValue(view.year, view.month, day);
       const selected = candidate === value;
       const current = candidate === today;
-      const disabled = disablePast && Boolean(today) && candidate < today;
+      const disabled = Boolean(today) && ((disablePast && candidate < today) || (disableFuture && candidate > today));
       return <button type="button" key={candidate} disabled={disabled} onClick={() => { setValue(candidate); setOpen(false); }} aria-label={candidate} aria-pressed={selected} className={`focus-ring grid aspect-square place-items-center text-xs transition disabled:cursor-not-allowed disabled:text-[#c5c9c7] ${selected ? "bg-[#057c73] font-bold text-white" : current ? "border border-[#057c73] font-bold text-[#057c73]" : disabled ? "" : "hover:bg-[#e6f2f0]"}`}>{day}</button>;
     })}</div><div className="mt-4 flex justify-between border-t border-[#dfe3e1] pt-3"><button type="button" onClick={() => { setValue(""); setOpen(false); }} className="text-[10px] font-bold uppercase tracking-[.1em] text-[#6d716f]">Clear</button>{today ? <button type="button" onClick={() => { setValue(today); setOpen(false); }} className="text-[10px] font-bold uppercase tracking-[.1em] text-[#057c73]">Today</button> : null}</div></div> : null}
   </div>;

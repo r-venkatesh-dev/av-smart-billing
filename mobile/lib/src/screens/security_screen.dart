@@ -252,7 +252,8 @@ class _AppPinDialogState extends State<AppPinDialog> {
   }
 
   @override
-  Widget build(BuildContext context) => AlertDialog(
+  Widget build(BuildContext context) => AppDialog(
+    icon: Icons.lock_outline_rounded,
     title: Text(widget.title),
     content: Form(
       key: form,

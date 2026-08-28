@@ -1,4 +1,4 @@
-import { captureRazorpayPayment, getRazorpayEnv, getRazorpayPayment, verifyCheckoutSignature } from "@/lib/razorpay";
+import { captureRazorpayPayment, getRazorpayPayment, getSubscriptionLicenseCreatedBy, verifyCheckoutSignature } from "@/lib/razorpay";
 import { generateLicenseKey, hashLicenseKey, licenseKeyHint } from "@/lib/license-key";
 import { encryptLicenseKey } from "@/lib/license-key-vault";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -69,7 +69,7 @@ export async function POST(request: Request) {
       p_license_key_hash: hashLicenseKey(key),
       p_license_key_hint: licenseKeyHint(key),
       p_expires_at: expiresAt,
-      p_created_by: getRazorpayEnv().SUBSCRIPTION_LICENSE_CREATED_BY,
+      p_created_by: getSubscriptionLicenseCreatedBy(),
     });
     if (completionError) throw new Error(completionError.message);
     const result = Array.isArray(completion) ? completion[0] : completion;

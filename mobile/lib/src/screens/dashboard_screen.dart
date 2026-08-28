@@ -11,11 +11,13 @@ class DashboardScreen extends StatefulWidget {
     required this.controller,
     required this.revision,
     required this.onSell,
+    required this.onInvoices,
     required this.drawer,
   });
   final AppController controller;
   final int revision;
   final VoidCallback onSell;
+  final VoidCallback onInvoices;
   final Widget drawer;
 
   @override
@@ -52,19 +54,37 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Widget build(BuildContext context) => Scaffold(
     drawer: widget.drawer,
     appBar: AppBar(
-      title: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      toolbarHeight: 72,
+      titleSpacing: 4,
+      title: Row(
         children: [
-          const Text(
-            'AV Smartbilling',
-            style: TextStyle(fontWeight: FontWeight.bold),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(8),
+            child: Image.asset(
+              'assets/branding/app-logo.png',
+              width: 38,
+              height: 38,
+            ),
           ),
-          Text(
-            widget.controller.session!.customerName,
-            style: Theme.of(context).textTheme.bodySmall,
+          const SizedBox(width: 10),
+          const Expanded(
+            child: Text(
+              'AV Smartbilling',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(fontSize: 19, fontWeight: FontWeight.w800),
+            ),
           ),
         ],
       ),
+      actions: [
+        IconButton(
+          onPressed: () => showMessage(context, 'No new notifications.'),
+          tooltip: 'Notifications',
+          icon: const Icon(Icons.notifications_none_rounded, size: 28),
+        ),
+        const SizedBox(width: 6),
+      ],
     ),
     body: FutureBuilder<_DashboardData>(
       future: data,
@@ -77,20 +97,24 @@ class _DashboardScreenState extends State<DashboardScreen> {
         }
         if (!snapshot.hasData) return const LoadingView();
         final value = snapshot.data!.stats;
-        final recentInvoices = snapshot.data!.invoices.take(5).toList();
+        final recentInvoices = snapshot.data!.invoices.take(3).toList();
         return RefreshIndicator(
           onRefresh: _refresh,
           child: ListView(
             physics: const AlwaysScrollableScrollPhysics(),
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 20),
             children: [
               Container(
-                padding: const EdgeInsets.all(22),
+                padding: const EdgeInsets.all(18),
                 decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [Color(0xff057c73), Color(0xff035f58)],
+                  image: const DecorationImage(
+                    image: AssetImage(
+                      'assets/branding/drawer-header-pattern.png',
+                    ),
+                    fit: BoxFit.cover,
+                    alignment: Alignment.centerRight,
                   ),
-                  borderRadius: BorderRadius.circular(22),
+                  borderRadius: BorderRadius.circular(16),
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -98,29 +122,49 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     const Text(
                       'TODAY\'S SALES',
                       style: TextStyle(
-                        color: Colors.white70,
-                        letterSpacing: 1.2,
-                        fontWeight: FontWeight.bold,
+                        color: Color(0xffd5eeeb),
+                        letterSpacing: 0.8,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
                       ),
                     ),
-                    const SizedBox(height: 8),
-                    Text(
-                      money(value.todaySales),
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 34,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                    const SizedBox(height: 18),
-                    FilledButton.icon(
-                      onPressed: widget.onSell,
-                      icon: const Icon(Icons.add_shopping_cart),
-                      label: const Text('Create new bill'),
-                      style: FilledButton.styleFrom(
-                        backgroundColor: Colors.white,
-                        foregroundColor: const Color(0xff035f58),
-                      ),
+                    const SizedBox(height: 10),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: FittedBox(
+                            fit: BoxFit.scaleDown,
+                            alignment: Alignment.centerLeft,
+                            child: Text(
+                              money(value.todaySales),
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 34,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        FilledButton.icon(
+                          onPressed: widget.onSell,
+                          icon: const Icon(Icons.add_circle, size: 21),
+                          label: const Text('Create new bill'),
+                          style: FilledButton.styleFrom(
+                            backgroundColor: Colors.white,
+                            foregroundColor: const Color(0xff057c73),
+                            minimumSize: const Size(0, 48),
+                            padding: const EdgeInsets.symmetric(horizontal: 13),
+                            textStyle: const TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700,
+                            ),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                   ],
                 ),
@@ -132,49 +176,63 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 physics: const NeverScrollableScrollPhysics(),
                 mainAxisSpacing: 12,
                 crossAxisSpacing: 12,
-                childAspectRatio: 1.35,
+                childAspectRatio: 1.48,
                 children: [
                   _StatCard(
                     label: 'Total sales',
                     value: money(value.totalSales),
-                    icon: Icons.trending_up,
+                    icon: Icons.currency_rupee_rounded,
                   ),
                   _StatCard(
                     label: 'Invoices',
                     value: '${value.invoiceCount}',
-                    icon: Icons.receipt_long,
+                    icon: Icons.receipt_long_outlined,
                   ),
                   _StatCard(
                     label: 'Products',
                     value: '${value.productCount}',
-                    icon: Icons.inventory_2,
+                    icon: Icons.inventory_2_outlined,
                   ),
                   _StatCard(
                     label: 'Low stock',
                     value: '${value.lowStockCount}',
-                    icon: Icons.warning_amber,
+                    icon: Icons.warning_amber_rounded,
                     warning: value.lowStockCount > 0,
                   ),
                 ],
               ),
-              const SizedBox(height: 20),
+              const SizedBox(height: 16),
               Card(
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                  side: const BorderSide(color: Color(0xffe0e5e3)),
+                ),
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  padding: const EdgeInsets.fromLTRB(12, 6, 12, 8),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Padding(
-                        padding: EdgeInsets.fromLTRB(16, 10, 16, 8),
-                        child: Text(
-                          'RECENT BILLS',
-                          style: TextStyle(
-                            fontSize: 11,
-                            letterSpacing: 1,
-                            color: Colors.grey,
-                            fontWeight: FontWeight.bold,
+                      Row(
+                        children: [
+                          const Expanded(
+                            child: Padding(
+                              padding: EdgeInsets.only(left: 4),
+                              child: Text(
+                                'RECENT BILLS',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  letterSpacing: 0.5,
+                                  color: Color(0xff343c39),
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                            ),
                           ),
-                        ),
+                          TextButton(
+                            onPressed: widget.onInvoices,
+                            child: const Text('View all'),
+                          ),
+                        ],
                       ),
                       if (recentInvoices.isEmpty)
                         const Padding(
@@ -184,38 +242,56 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           ),
                         )
                       else
-                        for (final invoice in recentInvoices)
+                        for (
+                          var index = 0;
+                          index < recentInvoices.length;
+                          index++
+                        ) ...[
+                          if (index > 0) const Divider(height: 1, indent: 58),
                           ListTile(
+                            contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 4,
+                            ),
                             leading: const CircleAvatar(
-                              backgroundColor: Color(0xffe6f2f0),
+                              radius: 21,
+                              backgroundColor: Color(0xffe4f3f0),
                               child: Icon(
-                                Icons.receipt_outlined,
+                                Icons.receipt_long_outlined,
                                 color: Color(0xff057c73),
+                                size: 22,
                               ),
                             ),
                             title: Text(
-                              invoice.invoiceNumber,
+                              recentInvoices[index].invoiceNumber,
                               style: const TextStyle(
                                 fontWeight: FontWeight.bold,
                               ),
                             ),
-                            subtitle: Text(invoice.customerName),
-                            trailing: Text(
-                              money(invoice.totalInPaise),
-                              style: const TextStyle(
-                                fontWeight: FontWeight.bold,
-                              ),
+                            subtitle: Text(recentInvoices[index].customerName),
+                            trailing: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(
+                                  money(recentInvoices[index].totalInPaise),
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                                const SizedBox(width: 4),
+                                const Icon(Icons.chevron_right_rounded),
+                              ],
                             ),
                             onTap: () => Navigator.push(
                               context,
                               MaterialPageRoute<void>(
                                 builder: (_) => InvoiceDetailScreen(
                                   controller: widget.controller,
-                                  invoiceId: invoice.id,
+                                  invoiceId: recentInvoices[index].id,
                                 ),
                               ),
                             ),
                           ),
+                        ],
                     ],
                   ),
                 ),
@@ -249,23 +325,58 @@ class _StatCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Card(
+    shape: RoundedRectangleBorder(
+      borderRadius: BorderRadius.circular(14),
+      side: const BorderSide(color: Color(0xffe0e5e3)),
+    ),
     child: Padding(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      padding: const EdgeInsets.all(11),
+      child: Row(
         children: [
-          Icon(
-            icon,
-            color: warning
-                ? Colors.orange.shade700
-                : Theme.of(context).colorScheme.primary,
+          CircleAvatar(
+            radius: 22,
+            backgroundColor: warning
+                ? const Color(0xffffedd7)
+                : const Color(0xffe4f3f0),
+            foregroundColor: warning
+                ? const Color(0xffd58100)
+                : const Color(0xff057c73),
+            child: Icon(icon, size: 23),
           ),
-          Text(
-            value,
-            style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+          const SizedBox(width: 9),
+          Expanded(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label.toUpperCase(),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Color(0xff646c69),
+                    fontSize: 10,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 5),
+                FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    value,
+                    style: TextStyle(
+                      color: warning
+                          ? const Color(0xffd58100)
+                          : const Color(0xff202623),
+                      fontSize: 18,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
-          Text(label, style: TextStyle(color: Colors.grey.shade600)),
         ],
       ),
     ),

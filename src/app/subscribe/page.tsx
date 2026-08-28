@@ -17,7 +17,7 @@ export default async function SubscribePage({ searchParams }: PageProps<"/subscr
     .order("price_in_paise");
   const plans = error
     ? []
-    : (data ?? []).filter((plan) => (plan.status === "ACTIVE" && Number(plan.price_in_paise) > 0) || (plan.status === "INACTIVE" && plan.is_publicly_visible)).map((plan) => ({
+    : (data ?? []).filter((plan) => plan.status === "ACTIVE" || (plan.status === "INACTIVE" && plan.is_publicly_visible)).map((plan) => ({
         id: plan.id,
         name: plan.name,
         description: plan.description,
@@ -29,7 +29,7 @@ export default async function SubscribePage({ searchParams }: PageProps<"/subscr
         validationWindowDays: plan.validation_window_days,
         priceInPaise: Number(plan.price_in_paise),
         interval: plan.interval as "WEEK" | "MONTH" | "QUARTER" | "YEAR",
-        purchasable: plan.status === "ACTIVE" && Number(plan.price_in_paise) > 0,
+        purchasable: plan.status === "ACTIVE",
       }));
 
   const initialPlanId = typeof requestedPlan === "string" && plans.some((plan) => plan.id === requestedPlan && plan.purchasable) ? requestedPlan : undefined;
@@ -43,10 +43,10 @@ export default async function SubscribePage({ searchParams }: PageProps<"/subscr
           <h1 className="mt-2 text-3xl tracking-[-.035em] sm:text-4xl">
             Start billing with confidence.
           </h1>
-          <p className="mt-2 text-sm leading-6 text-[#6d716f]">
-            Enter your shop details, choose a plan, and complete payment. Your
-            activation key will be shown only once after Razorpay confirms the
-            payment.
+          <p className="mt-2 text-sm leading-6 text-[#6d716f]"> 
+            Enter your shop details and choose a plan. Free plans generate the
+            activation key directly; paid plans continue through secure Razorpay
+            checkout. Your key will be shown only once.
           </p>
         </div>
         <SubscriptionCheckout plans={plans} plansUnavailable={Boolean(error)} initialPlanId={initialPlanId} />

@@ -6,10 +6,10 @@ import { getBillingBusiness } from "@/data/billing";
 import { requireAdminRole } from "@/lib/auth/authorization";
 import { createBillingDataClient, requireBillingAccess } from "@/lib/billing-access";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
-import { billingBusinessSchema, billingCustomerSchema, billingInvoiceSchema, billingPaymentSchema, billingPosSchema, billingProductSchema, billingStockAdjustmentSchema } from "@/lib/validation/billing";
+import { billingBusinessSchema, billingCustomerSchema, billingHeldBillSchema, billingInvoiceSchema, billingPaymentSchema, billingPosSchema, billingProductSchema, billingStockAdjustmentSchema } from "@/lib/validation/billing";
 import { percentToBasisPoints, rupeesToPaise } from "@/lib/money";
 
-export interface BillingFormState { message?: string; errors?: Record<string, string[]> }
+export interface BillingFormState { message?: string; success?: boolean; errors?: Record<string, string[]> }
 
 function fields(formData: FormData, names: string[]) {
   return Object.fromEntries(names.map((name) => [name, formData.get(name)]));
@@ -35,6 +35,46 @@ export async function updateBillingBusiness(_state: BillingFormState, formData: 
   const { error } = await supabase.from("billing_businesses").update({ company_name: parsed.data.companyName, contact_person: parsed.data.contactPerson, email: parsed.data.email || null, phone: parsed.data.phone, address: parsed.data.address, gstin: parsed.data.gstin || null, currency_code: parsed.data.currencyCode, invoice_prefix: parsed.data.invoicePrefix, low_stock_threshold: parsed.data.lowStockThreshold, state_code: parsed.data.stateCode, invoice_terms: parsed.data.invoiceTerms, invoice_footer: parsed.data.invoiceFooter, thermal_paper_width: parsed.data.thermalPaperWidth }).eq("id", business.id);
   if (error) return { message: error.message };
   redirect("/billing/settings?saved=1");
+}
+
+export async function updateBillingPaymentQr(_state: BillingFormState, formData: FormData): Promise<BillingFormState> {
+  await requireBillingAccess(["OWNER", "ADMIN"]);
+  const business = await getBillingBusiness();
+  if (!business) return { message: "Create a billing workspace first." };
+  const file = formData.get("paymentQr");
+  if (!(file instanceof File) || file.size === 0) return { message: "Choose a QR code image to upload." };
+  if (!new Set(["image/png", "image/jpeg", "image/webp"]).has(file.type)) return { message: "Upload a PNG, JPG or WebP image." };
+  if (file.size > 1024 * 1024) return { message: "The QR code image must be 1 MB or smaller." };
+
+  const supabase = await createBillingDataClient();
+  const paymentQrPath = `${business.id}/payment-qr`;
+  const uploaded = await supabase.storage.from("billing-payment-qrs").upload(paymentQrPath, new Uint8Array(await file.arrayBuffer()), { contentType: file.type, cacheControl: "0", upsert: true });
+  if (uploaded.error) return { message: uploaded.error.message };
+  const updated = await supabase.from("billing_businesses").update({ payment_qr_path: paymentQrPath }).eq("id", business.id);
+  if (updated.error) return { message: updated.error.message };
+  revalidatePath("/billing/settings");
+  revalidatePath("/billing/pos");
+  revalidatePath("/billing/payments/new");
+  return { message: "Shop payment QR code saved.", success: true };
+}
+
+export async function removeBillingPaymentQr(_state: BillingFormState, _formData: FormData): Promise<BillingFormState> {
+  void _state;
+  void _formData;
+  await requireBillingAccess(["OWNER", "ADMIN"]);
+  const business = await getBillingBusiness();
+  if (!business) return { message: "Create a billing workspace first." };
+  const supabase = await createBillingDataClient();
+  if (business.paymentQrPath) {
+    const removed = await supabase.storage.from("billing-payment-qrs").remove([business.paymentQrPath]);
+    if (removed.error) return { message: removed.error.message };
+  }
+  const updated = await supabase.from("billing_businesses").update({ payment_qr_path: "" }).eq("id", business.id);
+  if (updated.error) return { message: updated.error.message };
+  revalidatePath("/billing/settings");
+  revalidatePath("/billing/pos");
+  revalidatePath("/billing/payments/new");
+  return { message: "Shop payment QR code removed.", success: true };
 }
 
 export async function createBillingCustomer(_state: BillingFormState, formData: FormData): Promise<BillingFormState> {
@@ -128,10 +168,81 @@ export async function createBillingPayment(_state: BillingFormState, formData: F
   if (!business) return { message: "Create a billing workspace first." };
   const parsed = billingPaymentSchema.safeParse(fields(formData, ["invoiceId", "amountInRupees", "method", "reference", "notes"]));
   if (!parsed.success) return { errors: parsed.error.flatten().fieldErrors };
+  if (parsed.data.method === "UPI" && !business.paymentQrPath) return { message: "Upload the shop QR code in Business Settings or choose another payment method." };
   const supabase = await createBillingDataClient();
   const { error } = await supabase.rpc("record_billing_payment", { p_business_id: business.id, p_invoice_id: parsed.data.invoiceId, p_amount_in_paise: rupeesToPaise(parsed.data.amountInRupees), p_method: parsed.data.method, p_reference: parsed.data.reference || null, p_notes: parsed.data.notes });
   if (error) return { message: error.message };
   redirect(`/billing/invoices/${parsed.data.invoiceId}`);
+}
+
+export interface HeldBillSummary {
+  id: string;
+  label: string;
+  createdAt: string;
+  itemCount: number;
+}
+
+export interface HeldBillActionResult {
+  ok: boolean;
+  message: string;
+  bill?: HeldBillSummary;
+  items?: { productId: string; quantity: number; discountPercent: number }[];
+}
+
+export async function holdBillingPosBill(payload: unknown): Promise<HeldBillActionResult> {
+  const access = await requireBillingAccess(["OWNER", "ADMIN", "SUPPORT"]);
+  const business = await getBillingBusiness();
+  if (!business) return { ok: false, message: "Create a billing workspace first." };
+  const parsed = billingHeldBillSchema.safeParse(payload);
+  if (!parsed.success) return { ok: false, message: parsed.error.issues[0]?.message ?? "Add products before holding this bill." };
+  const supabase = await createBillingDataClient();
+  const productIds = [...new Set(parsed.data.items.map((item) => item.productId))];
+  if (productIds.length !== parsed.data.items.length) return { ok: false, message: "A held bill cannot contain duplicate product lines." };
+  const products = await supabase.from("billing_products").select("id").eq("business_id", business.id).eq("status", "ACTIVE").in("id", productIds);
+  if (products.error) return { ok: false, message: products.error.message };
+  if ((products.data ?? []).length !== productIds.length) return { ok: false, message: "One or more products are no longer available." };
+  const now = new Date();
+  const time = new Intl.DateTimeFormat("en-IN", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "Asia/Kolkata" }).format(now);
+  const created = await supabase.from("billing_held_bills").insert({ business_id: business.id, label: `Held bill ${time}`, created_by: access.actorId }).select("id, label, created_at").single();
+  if (created.error) return { ok: false, message: created.error.message };
+  const items = parsed.data.items.map((item) => ({ held_bill_id: created.data.id, product_id: item.productId, quantity: item.quantity, discount_percent: item.discountPercent }));
+  const inserted = await supabase.from("billing_held_bill_items").insert(items);
+  if (inserted.error) {
+    await supabase.from("billing_held_bills").delete().eq("id", created.data.id).eq("business_id", business.id);
+    return { ok: false, message: inserted.error.message };
+  }
+  return { ok: true, message: "Bill held successfully.", bill: { id: created.data.id, label: created.data.label, createdAt: created.data.created_at, itemCount: items.length } };
+}
+
+export async function takeBillingPosBill(id: string): Promise<HeldBillActionResult> {
+  await requireBillingAccess(["OWNER", "ADMIN", "SUPPORT"]);
+  const business = await getBillingBusiness();
+  if (!business) return { ok: false, message: "Create a billing workspace first." };
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id)) return { ok: false, message: "Held bill is invalid." };
+  const supabase = await createBillingDataClient();
+  const held = await supabase.from("billing_held_bills").select("id").eq("id", id).eq("business_id", business.id).maybeSingle();
+  if (held.error || !held.data) return { ok: false, message: held.error?.message ?? "Held bill was not found." };
+  const rows = await supabase.from("billing_held_bill_items").select("product_id, quantity, discount_percent, billing_products(status, stock_quantity)").eq("held_bill_id", id);
+  if (rows.error) return { ok: false, message: rows.error.message };
+  const items = (rows.data ?? []).flatMap((row) => {
+    const product = Array.isArray(row.billing_products) ? row.billing_products[0] : row.billing_products;
+    if (!product || product.status !== "ACTIVE" || Number(product.stock_quantity) <= 0) return [];
+    return [{ productId: row.product_id, quantity: Math.min(Number(row.quantity), Number(product.stock_quantity)), discountPercent: Number(row.discount_percent) }];
+  }).filter((item) => item.quantity > 0);
+  const removed = await supabase.from("billing_held_bills").delete().eq("id", id).eq("business_id", business.id);
+  if (removed.error) return { ok: false, message: removed.error.message };
+  return { ok: true, message: items.length ? "Held bill resumed." : "The held products are no longer active or in stock.", items };
+}
+
+export async function deleteBillingPosBill(id: string): Promise<HeldBillActionResult> {
+  await requireBillingAccess(["OWNER", "ADMIN", "SUPPORT"]);
+  const business = await getBillingBusiness();
+  if (!business) return { ok: false, message: "Create a billing workspace first." };
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id)) return { ok: false, message: "Held bill is invalid." };
+  const supabase = await createBillingDataClient();
+  const removed = await supabase.from("billing_held_bills").delete().eq("id", id).eq("business_id", business.id);
+  if (removed.error) return { ok: false, message: removed.error.message };
+  return { ok: true, message: "Held bill deleted." };
 }
 
 export async function createBillingPosSale(_state: BillingFormState, formData: FormData): Promise<BillingFormState> {
@@ -143,6 +254,7 @@ export async function createBillingPosSale(_state: BillingFormState, formData: F
   catch { return { message: "The POS cart payload is invalid." }; }
   const parsed = billingPosSchema.safeParse(payload);
   if (!parsed.success) return { message: parsed.error.issues[0]?.message ?? "Review the POS sale details." };
+  if (parsed.data.paymentMethod === "UPI" && !business.paymentQrPath) return { message: "Upload the shop QR code in Business Settings or choose another payment method." };
   const supabase = await createBillingDataClient();
   const { data, error } = await supabase.rpc("create_billing_pos_sale", {
     p_business_id: business.id,

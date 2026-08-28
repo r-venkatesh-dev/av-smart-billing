@@ -40,7 +40,9 @@ class _ProductsScreenState extends State<ProductsScreen> {
   Future<void> _delete(Product product) async {
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (context) => AppDialog(
+        icon: Icons.delete_outline_rounded,
+        danger: true,
         title: const Text('Delete product?'),
         content: Text(
           'Delete ${product.name}? Products already used on invoices must be marked inactive instead.',
@@ -74,11 +76,15 @@ class _ProductsScreenState extends State<ProductsScreen> {
   Future<void> _changeStatus(Product product, bool makeActive) async {
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (context) => AppDialog(
+        icon: makeActive
+            ? Icons.visibility_outlined
+            : Icons.visibility_off_outlined,
         title: Text(
           makeActive ? 'Make product active?' : 'Make product inactive?',
         ),
         content: Text(
+          textAlign: TextAlign.center,
           makeActive
               ? '${product.name} will appear in Quick Sell and can be added to new bills.'
               : '${product.name} will be hidden from Quick Sell. Existing invoices will not be affected.',
@@ -86,11 +92,11 @@ class _ProductsScreenState extends State<ProductsScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: const Text('No, keep as it is'),
+            child: const Text('No'),
           ),
           FilledButton(
             onPressed: () => Navigator.pop(context, true),
-            child: Text(makeActive ? 'Yes, make active' : 'Yes, make inactive'),
+            child: Text(makeActive ? 'Yes' : 'Yes'),
           ),
         ],
       ),
@@ -175,8 +181,32 @@ class _ProductsScreenState extends State<ProductsScreen> {
     ),
     floatingActionButton: FloatingActionButton.extended(
       onPressed: () => _edit(),
-      icon: const Icon(Icons.add),
-      label: const Text('Product'),
+      tooltip: 'Add a new product',
+      backgroundColor: const Color(0xff057c73),
+      foregroundColor: Colors.white,
+      elevation: 4,
+      highlightElevation: 8,
+      extendedIconLabelSpacing: 10,
+      extendedPadding: const EdgeInsets.fromLTRB(10, 0, 20, 0),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+      icon: const DecoratedBox(
+        decoration: BoxDecoration(
+          color: Color(0x26ffffff),
+          shape: BoxShape.circle,
+        ),
+        child: Padding(
+          padding: EdgeInsets.all(5),
+          child: Icon(Icons.add_rounded, size: 22),
+        ),
+      ),
+      label: const Text(
+        'Add Product',
+        style: TextStyle(
+          fontSize: 15,
+          fontWeight: FontWeight.w700,
+          letterSpacing: 0.1,
+        ),
+      ),
     ),
   );
 }

@@ -291,6 +291,23 @@ class AppDatabase {
     await txn.delete('invoices', where: 'id=?', whereArgs: [id]);
   });
 
+  Future<void> markInvoicePaid(String id, String paymentMethod) async {
+    const supportedPaymentMethods = {'CASH', 'UPI_QR', 'CARD'};
+    if (!supportedPaymentMethods.contains(paymentMethod)) {
+      throw Exception('Select a valid payment method.');
+    }
+
+    final updated = await db.update(
+      'invoices',
+      {'status': 'PAID', 'payment_method': paymentMethod},
+      where: "id=? and status='DUE'",
+      whereArgs: [id],
+    );
+    if (updated == 0) {
+      throw Exception('This invoice is no longer due.');
+    }
+  }
+
   Future<List<Product>> lowStockProducts() async {
     final business = await getBusiness();
     final threshold = (business['low_stock_threshold'] as num).toDouble();

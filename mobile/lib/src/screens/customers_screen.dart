@@ -28,7 +28,9 @@ class _CustomersScreenState extends State<CustomersScreen> {
   Future<void> _delete(Customer customer) async {
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (context) => AppDialog(
+        icon: Icons.person_remove_outlined,
+        danger: true,
         title: const Text('Delete customer?'),
         content: Text(
           'Delete ${customer.name}? Existing invoices will keep their customer details.',

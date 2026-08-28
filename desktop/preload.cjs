@@ -13,6 +13,10 @@ const channels = new Set([
   "billing:payments", "billing:record-payment",
   "billing:settings", "billing:save-settings", "billing:reports",
   "cloud:status", "cloud:backup", "cloud:restore",
+  "security:status", "security:configure", "security:verify", "security:disable", "security:biometric",
+  "payment-qr:pick", "payment-qr:get", "payment-qr:remove",
+  "file:save-export", "document:save-pdf", "external:whatsapp", "external:email",
+  "activity:list",
 ]);
 
 contextBridge.exposeInMainWorld("avSmartbilling", {

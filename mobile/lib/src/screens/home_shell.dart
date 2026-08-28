@@ -56,7 +56,8 @@ class _HomeShellState extends State<HomeShell> {
       if (!mounted) return;
       final switchOffline = await showDialog<bool>(
         context: context,
-        builder: (context) => AlertDialog(
+        builder: (context) => AppDialog(
+          icon: Icons.cloud_off_outlined,
           title: const Text('Online Billing unavailable'),
           content: Text(_onlineError(error)),
           actions: [
@@ -82,7 +83,8 @@ class _HomeShellState extends State<HomeShell> {
     final goingOnline = mode == BillingMode.online;
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (context) => AppDialog(
+        icon: Icons.swap_horiz_rounded,
         title: Text(
           goingOnline
               ? 'Switch to Online Billing?'
@@ -127,7 +129,8 @@ class _HomeShellState extends State<HomeShell> {
       if (!mounted) return;
       await showDialog<void>(
         context: context,
-        builder: (context) => AlertDialog(
+        builder: (context) => AppDialog(
+          icon: Icons.cloud_off_outlined,
           title: const Text('Could not enable Online Billing'),
           content: Text(_onlineError(error)),
           actions: [
@@ -182,7 +185,8 @@ class _HomeShellState extends State<HomeShell> {
       if (widget.controller.session?.allowReportsExports != true) {
         showDialog<void>(
           context: context,
-          builder: (context) => AlertDialog(
+          builder: (context) => AppDialog(
+            icon: Icons.lock_outline_rounded,
             title: const Text('Reports & Exports are not included'),
             content: const Text(
               'Your current plan does not include reports or CSV, Excel, and PDF exports. Upgrade your plan and activate the new key to use this feature.',
@@ -211,7 +215,8 @@ class _HomeShellState extends State<HomeShell> {
       if (widget.controller.session?.allowCloudBackup != true) {
         showDialog<void>(
           context: context,
-          builder: (context) => AlertDialog(
+          builder: (context) => AppDialog(
+            icon: Icons.cloud_off_outlined,
             title: const Text('Cloud Backup is not included'),
             content: const Text(
               'Your current plan supports offline billing only. Upgrade your plan and activate the new key to use Cloud Backup.',
@@ -250,6 +255,7 @@ class _HomeShellState extends State<HomeShell> {
               controller: widget.controller,
               revision: widget.controller.dataRevision,
               onSell: () => _selectPage(1),
+              onInvoices: () => _selectPage(3),
               drawer: _drawer(0),
             ),
       online
@@ -426,66 +432,247 @@ class _AppDrawer extends StatelessWidget {
   final bool switchingMode;
 
   @override
-  Widget build(BuildContext context) => Drawer(
-    child: SafeArea(
+  Widget build(BuildContext context) {
+    final drawerWidth = (MediaQuery.sizeOf(context).width * 0.86)
+        .clamp(304.0, 380.0)
+        .toDouble();
+    final safePadding = MediaQuery.paddingOf(context);
+
+    return Drawer(
+      width: drawerWidth,
+      backgroundColor: const Color(0xfffffdf9),
+      shape: const RoundedRectangleBorder(),
       child: Column(
         children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(20, 18, 12, 14),
-            child: Row(
+          Container(
+            height: 150 + safePadding.top,
+            width: double.infinity,
+            padding: EdgeInsets.fromLTRB(20, 16 + safePadding.top, 20, 12),
+            decoration: const BoxDecoration(
+              image: DecorationImage(
+                image: AssetImage('assets/branding/drawer-header-pattern.png'),
+                fit: BoxFit.cover,
+              ),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(14),
-                  child: Image.asset(
-                    'assets/branding/app-logo.png',
-                    width: 54,
-                    height: 54,
-                  ),
-                ),
-                const SizedBox(width: 14),
-                const Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'AV Smartbilling',
-                        style: TextStyle(
-                          fontSize: 17,
-                          fontWeight: FontWeight.w800,
+                Row(
+                  children: [
+                    Container(
+                      width: 56,
+                      height: 56,
+                      padding: const EdgeInsets.all(4),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(12),
+                        child: Image.asset(
+                          'assets/branding/app-logo.png',
+                          fit: BoxFit.cover,
                         ),
                       ),
-                      SizedBox(height: 2),
-                      Text(
-                        'Version 1.0.0',
-                        style: TextStyle(color: Colors.grey),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'AV Smartbilling',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 22,
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: -0.4,
+                            ),
+                          ),
+                          const SizedBox(height: 3),
+                          Tooltip(
+                            message:
+                                controller.session?.allowOnlineBilling == true
+                                ? 'Tap to switch billing mode'
+                                : 'Current billing mode',
+                            child: Material(
+                              color: Colors.white.withValues(alpha: 0.17),
+                              borderRadius: BorderRadius.circular(20),
+                              child: InkWell(
+                                borderRadius: BorderRadius.circular(20),
+                                onTap:
+                                    switchingMode ||
+                                        controller
+                                                .session
+                                                ?.allowOnlineBilling !=
+                                            true
+                                    ? null
+                                    : () => onModeChanged(
+                                        controller.isOnline
+                                            ? BillingMode.offline
+                                            : BillingMode.online,
+                                      ),
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 11,
+                                    vertical: 4,
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      if (switchingMode)
+                                        const SizedBox.square(
+                                          dimension: 10,
+                                          child: CircularProgressIndicator(
+                                            color: Colors.white,
+                                            strokeWidth: 2,
+                                          ),
+                                        )
+                                      else
+                                        Container(
+                                          width: 9,
+                                          height: 9,
+                                          decoration: BoxDecoration(
+                                            color: controller.isOnline
+                                                ? const Color(0xff20e369)
+                                                : Colors.white70,
+                                            shape: BoxShape.circle,
+                                          ),
+                                        ),
+                                      const SizedBox(width: 8),
+                                      Text(
+                                        controller.isOnline
+                                            ? 'Online Mode'
+                                            : 'Offline Mode',
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
-                IconButton(
-                  onPressed: () => Navigator.pop(context),
-                  tooltip: 'Close menu',
-                  icon: const Icon(Icons.menu_open),
+                const Spacer(),
+                FutureBuilder<Map<String, Object?>>(
+                  future: controller.database.getBusiness(),
+                  builder: (context, snapshot) {
+                    final business = snapshot.data;
+                    final savedName =
+                        (business?['company_name'] as String?)?.trim() ?? '';
+                    final fallbackName =
+                        controller.session?.customerName.trim() ?? '';
+                    final name = savedName.isNotEmpty
+                        ? savedName
+                        : fallbackName.isNotEmpty
+                        ? fallbackName
+                        : 'My Business';
+                    final gstin = (business?['gstin'] as String?)?.trim() ?? '';
+                    return Material(
+                      color: Colors.transparent,
+                      child: InkWell(
+                        onTap: onSettings,
+                        borderRadius: BorderRadius.circular(14),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 4),
+                          child: Row(
+                            children: [
+                              Container(
+                                width: 42,
+                                height: 42,
+                                decoration: BoxDecoration(
+                                  color: Colors.white.withValues(alpha: 0.16),
+                                  shape: BoxShape.circle,
+                                ),
+                                child: const Icon(
+                                  Icons.storefront_outlined,
+                                  color: Colors.white,
+                                  size: 24,
+                                ),
+                              ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      name,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 15,
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                    ),
+                                    if (gstin.isNotEmpty)
+                                      Text(
+                                        'GSTIN: $gstin',
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 11,
+                                        ),
+                                      ),
+                                  ],
+                                ),
+                              ),
+                              const Icon(
+                                Icons.keyboard_arrow_down_rounded,
+                                color: Colors.white,
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    );
+                  },
                 ),
               ],
             ),
           ),
-          const Divider(height: 1),
           Expanded(
             child: ListView(
-              padding: const EdgeInsets.symmetric(vertical: 10),
+              padding: const EdgeInsets.fromLTRB(0, 8, 0, 6),
               children: [
+                // Padding(
+                //   padding: const EdgeInsets.symmetric(horizontal: 16),
+                //   child: FilledButton.icon(
+                //     onPressed: () => onSelect(1),
+                //     icon: const Icon(Icons.add_circle, size: 26),
+                //     label: const Text('New Sale'),
+                //     style: FilledButton.styleFrom(
+                //       backgroundColor: const Color(0xff07877e),
+                //       foregroundColor: Colors.white,
+                //       minimumSize: const Size.fromHeight(54),
+                //       textStyle: const TextStyle(
+                //         fontSize: 18,
+                //         fontWeight: FontWeight.w700,
+                //       ),
+                //       shape: RoundedRectangleBorder(
+                //         borderRadius: BorderRadius.circular(7),
+                //       ),
+                //     ),
+                //   ),
+                // ),
+                const _DrawerSectionLabel('OVERVIEW'),
                 _DrawerItem(
                   icon: Icons.home_outlined,
                   label: 'Home',
                   selected: selectedIndex == 0,
                   onTap: () => onSelect(0),
-                ),
-                _DrawerItem(
-                  icon: Icons.point_of_sale_outlined,
-                  label: 'Sell',
-                  selected: selectedIndex == 1,
-                  onTap: () => onSelect(1),
                 ),
                 _DrawerItem(
                   icon: Icons.inventory_2_outlined,
@@ -504,6 +691,11 @@ class _AppDrawer extends StatelessWidget {
                   label: 'Customers',
                   onTap: onCustomers,
                 ),
+                const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 16),
+                  child: Divider(color: Color(0xffd9dddb)),
+                ),
+                const _DrawerSectionLabel('TOOLS'),
                 if (controller.session?.allowReportsExports == true)
                   _DrawerItem(
                     icon: Icons.analytics_outlined,
@@ -525,72 +717,10 @@ class _AppDrawer extends StatelessWidget {
                   label: 'App Lock & Security',
                   onTap: onSecurity,
                 ),
-                const Divider(indent: 20, endIndent: 20),
-                if (controller.session?.allowOnlineBilling == true)
-                  Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 18,
-                      vertical: 4,
-                    ),
-                    child: Container(
-                      padding: const EdgeInsets.fromLTRB(14, 8, 8, 8),
-                      decoration: BoxDecoration(
-                        color: controller.isOnline
-                            ? const Color(0xffe6f2f0)
-                            : Colors.grey.shade100,
-                        borderRadius: BorderRadius.circular(14),
-                      ),
-                      child: Row(
-                        children: [
-                          Icon(
-                            controller.isOnline
-                                ? Icons.cloud_done_outlined
-                                : Icons.phone_android_outlined,
-                            color: controller.isOnline
-                                ? Theme.of(context).colorScheme.primary
-                                : Colors.grey.shade700,
-                          ),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  controller.isOnline
-                                      ? 'Online Mode'
-                                      : 'Offline Mode',
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                                Text(
-                                  controller.session?.allowOnlineBilling != true
-                                      ? 'Your plan supports offline billing only'
-                                      : controller.isOnline
-                                      ? 'Cloud Products & Customers'
-                                      : 'Saved on this phone',
-                                  style: Theme.of(context).textTheme.bodySmall,
-                                ),
-                              ],
-                            ),
-                          ),
-                          Switch.adaptive(
-                            value: controller.isOnline,
-                            onChanged:
-                                switchingMode ||
-                                    controller.session?.allowOnlineBilling !=
-                                        true
-                                ? null
-                                : (value) => onModeChanged(
-                                    value
-                                        ? BillingMode.online
-                                        : BillingMode.offline,
-                                  ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
+                const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 16),
+                  child: Divider(color: Color(0xffd9dddb)),
+                ),
                 _DrawerItem(
                   icon: Icons.info_outline,
                   label: 'About App',
@@ -599,17 +729,59 @@ class _AppDrawer extends StatelessWidget {
               ],
             ),
           ),
-          Padding(
-            padding: const EdgeInsets.all(20),
-            child: Align(
-              alignment: Alignment.centerLeft,
-              child: Text(
-                controller.session!.customerName,
-                style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
+          InkWell(
+            onTap: onAbout,
+            child: Container(
+              padding: EdgeInsets.fromLTRB(20, 9, 20, 10 + safePadding.bottom),
+              decoration: const BoxDecoration(
+                color: Color(0xfff0faf7),
+                border: Border(top: BorderSide(color: Color(0xffd8ebe7))),
+              ),
+              child: const Row(
+                children: [
+                  CircleAvatar(
+                    radius: 18,
+                    backgroundColor: Color(0xffdcefeb),
+                    foregroundColor: Color(0xff057c73),
+                    child: Icon(Icons.person_outline),
+                  ),
+                  SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      'Version 1.0.0',
+                      style: TextStyle(
+                        color: Color(0xff34413e),
+                        fontSize: 13,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                  Icon(Icons.chevron_right_rounded),
+                ],
               ),
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _DrawerSectionLabel extends StatelessWidget {
+  const _DrawerSectionLabel(this.label);
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.fromLTRB(24, 12, 24, 5),
+    child: Text(
+      label,
+      style: const TextStyle(
+        color: Color(0xff4b504f),
+        fontSize: 11,
+        fontWeight: FontWeight.w800,
+        letterSpacing: 0.4,
       ),
     ),
   );
@@ -630,15 +802,52 @@ class _DrawerItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
-    child: ListTile(
-      selected: selected,
-      selectedTileColor: const Color(0xffe6f2f0),
-      selectedColor: Theme.of(context).colorScheme.primary,
-      leading: Icon(icon),
-      title: Text(label),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      onTap: onTap,
+    padding: const EdgeInsets.symmetric(horizontal: 10,vertical: 3),
+    child: Stack(
+      children: [
+        ListTile(
+          dense: true,
+          visualDensity: const VisualDensity(vertical: -1),
+          selected: selected,
+          selectedTileColor: const Color(0xffe6f2f0),
+          selectedColor: const Color(0xff057c73),
+          contentPadding: const EdgeInsets.fromLTRB(20, 0, 14, 0),
+          leading: CircleAvatar(
+            radius: 17,
+            backgroundColor: const Color(0xffdff1ee),
+            foregroundColor: const Color(0xff057c73),
+            child: Icon(icon, size: 20),
+          ),
+          title: Text(
+            label,
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+            ),
+          ),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(14),
+          ),
+          onTap: onTap,
+        ),
+        if (selected)
+          const Positioned(
+            left: 0,
+            top: 0,
+            bottom: 0,
+            child: SizedBox(
+              width: 5,
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: Color(0xff057c73),
+                  borderRadius: BorderRadius.horizontal(
+                    right: Radius.circular(5),
+                  ),
+                ),
+              ),
+            ),
+          ),
+      ],
     ),
   );
 }

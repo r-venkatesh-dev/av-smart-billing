@@ -17,7 +17,7 @@ export async function getBillingBusiness() {
   const supabase = await createBillingDataClient();
   let query = supabase
     .from("billing_businesses")
-    .select("id, company_name, contact_person, email, phone, address, gstin, state_code, currency_code, invoice_prefix, next_invoice_number, low_stock_threshold, invoice_terms, invoice_footer, thermal_paper_width, status, created_at")
+    .select("id, company_name, contact_person, email, phone, address, gstin, state_code, currency_code, invoice_prefix, next_invoice_number, low_stock_threshold, invoice_terms, invoice_footer, thermal_paper_width, payment_qr_path, status, created_at, updated_at")
     .eq("status", "ACTIVE")
     .order("created_at")
     .limit(1);
@@ -25,6 +25,8 @@ export async function getBillingBusiness() {
   const { data, error } = await query.maybeSingle();
   if (error) throw new Error(`Supabase query failed: ${error.message}`);
   if (!data) return null;
+  const paymentQrPath = data.payment_qr_path ?? "";
+  const paymentQrUrl = paymentQrPath ? `${supabase.storage.from("billing-payment-qrs").getPublicUrl(paymentQrPath).data.publicUrl}?v=${new Date(data.updated_at).getTime()}` : "";
   return {
     id: data.id,
     companyName: data.company_name,
@@ -41,6 +43,8 @@ export async function getBillingBusiness() {
     invoiceTerms: data.invoice_terms,
     invoiceFooter: data.invoice_footer,
     thermalPaperWidth: Number(data.thermal_paper_width) as 58 | 80,
+    paymentQrPath,
+    paymentQrUrl,
   };
 }
 
@@ -292,26 +296,57 @@ export async function getBillingDashboard() {
   };
 }
 
-export async function getBillingReport() {
+export async function listBillingHeldBills() {
+  const business = await getBillingBusiness();
+  if (!business) return { business: null, heldBills: [] };
+  const supabase = await createBillingDataClient();
+  const { data, error } = await supabase.from("billing_held_bills").select("id, label, created_at, billing_held_bill_items(count)").eq("business_id", business.id).order("created_at", { ascending: false });
+  if (error) throw new Error(`Supabase query failed: ${error.message}`);
+  return {
+    business,
+    heldBills: (data ?? []).map((row) => ({ id: row.id, label: row.label, createdAt: row.created_at, itemCount: one(row.billing_held_bill_items)?.count ?? 0 })),
+  };
+}
+
+export async function getBillingReport(range?: { from: string; to: string }) {
   const business = await getBillingBusiness();
   if (!business) return null;
   const supabase = await createBillingDataClient();
   const monthStart = new Date();
   monthStart.setDate(1);
   monthStart.setHours(0, 0, 0, 0);
+  const from = range?.from ? new Date(`${range.from}T00:00:00+05:30`) : monthStart;
+  const toExclusive = range?.to ? new Date(`${range.to}T00:00:00+05:30`) : new Date();
+  if (range?.to) toExclusive.setDate(toExclusive.getDate() + 1);
   const [invoiceResult, paymentResult] = await Promise.all([
-    supabase.from("billing_invoices").select("status, subtotal_in_paise, tax_in_paise, total_in_paise").eq("business_id", business.id).gte("issued_at", monthStart.toISOString()),
-    supabase.from("billing_payments").select("amount_in_paise").eq("business_id", business.id).gte("paid_at", monthStart.toISOString()),
+    supabase.from("billing_invoices").select("id, invoice_number, customer_name, issued_at, status, subtotal_in_paise, tax_in_paise, total_in_paise").eq("business_id", business.id).gte("issued_at", from.toISOString()).lt("issued_at", toExclusive.toISOString()).order("issued_at", { ascending: false }),
+    supabase.from("billing_payments").select("amount_in_paise, method, paid_at").eq("business_id", business.id).gte("paid_at", from.toISOString()).lt("paid_at", toExclusive.toISOString()),
   ]);
   if (invoiceResult.error) throw new Error(`Supabase query failed: ${invoiceResult.error.message}`);
   if (paymentResult.error) throw new Error(`Supabase query failed: ${paymentResult.error.message}`);
-  const invoices = invoiceResult.data ?? [];
+  const invoices = (invoiceResult.data ?? []).map((row) => ({
+    id: row.id,
+    invoiceNumber: row.invoice_number,
+    customerName: row.customer_name,
+    issuedAt: row.issued_at,
+    status: row.status,
+    subtotalInPaise: Number(row.subtotal_in_paise),
+    taxInPaise: Number(row.tax_in_paise),
+    totalInPaise: Number(row.total_in_paise),
+  }));
+  const payments = (paymentResult.data ?? []).map((row) => ({ amountInPaise: Number(row.amount_in_paise), method: row.method, paidAt: row.paid_at }));
+  const paymentMethods = Array.from(payments.reduce((summary, payment) => {
+    summary.set(payment.method, (summary.get(payment.method) ?? 0) + payment.amountInPaise);
+    return summary;
+  }, new Map<string, number>())).map(([method, amountInPaise]) => ({ method, amountInPaise }));
   return {
     business,
     invoiceCount: invoices.length,
-    salesInPaise: invoices.filter((row) => row.status !== "CANCELLED").reduce((sum, row) => sum + Number(row.total_in_paise), 0),
-    taxInPaise: invoices.filter((row) => row.status !== "CANCELLED").reduce((sum, row) => sum + Number(row.tax_in_paise), 0),
-    paymentsInPaise: (paymentResult.data ?? []).reduce((sum, row) => sum + Number(row.amount_in_paise), 0),
+    salesInPaise: invoices.filter((row) => row.status !== "CANCELLED").reduce((sum, row) => sum + row.totalInPaise, 0),
+    taxInPaise: invoices.filter((row) => row.status !== "CANCELLED").reduce((sum, row) => sum + row.taxInPaise, 0),
+    paymentsInPaise: payments.reduce((sum, row) => sum + row.amountInPaise, 0),
+    invoices,
+    paymentMethods,
   };
 }
 

@@ -64,7 +64,7 @@ export default function HomePage() {
                 href="/subscribe"
                 className="focus-ring inline-flex h-11 items-center gap-2 bg-[#057c73] px-5 text-[11px] font-bold uppercase tracking-[.09em] text-white"
               >
-                Purchase activation <ArrowRight size={15} />
+                Start Free Trail <ArrowRight size={15} />
               </Link>
               <Link
                 href="/products"

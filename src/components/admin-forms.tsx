@@ -314,7 +314,7 @@ export function PlanForm({
         </fieldset>
         <label className="flex items-start gap-3 rounded-xl border border-[#dfe3eb] p-4 sm:col-span-2">
           <input name="isPubliclyVisible" type="checkbox" defaultChecked={plan?.isPubliclyVisible ?? true} className="mt-0.5 size-4 accent-[#057c73]" />
-          <span><strong className="block text-sm">Show on public plan pages</strong><span className="mt-1 block text-xs text-[#667085]">Inactive plans appear as Coming soon and cannot be purchased. Active paid plans remain purchasable.</span></span>
+          <span><strong className="block text-sm">Show on public plan pages</strong><span className="mt-1 block text-xs text-[#667085]">Inactive plans appear as Coming soon. Active free plans can generate a key directly, while active paid plans use Razorpay.</span></span>
         </label>
         <fieldset className="sm:col-span-2">
           <legend className="text-sm font-semibold">Licensed capabilities</legend>

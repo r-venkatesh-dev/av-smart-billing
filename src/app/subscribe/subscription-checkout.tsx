@@ -7,6 +7,7 @@ import {
   CheckCircle2,
   Copy,
   CreditCard,
+  KeyRound,
   LoaderCircle,
   ShieldCheck,
 } from "lucide-react";
@@ -115,6 +116,7 @@ export function SubscriptionCheckout({
   const [message, setMessage] = useState("");
   const [licenseKey, setLicenseKey] = useState("");
   const [licenseExpiresAt, setLicenseExpiresAt] = useState("");
+  const [freeActivation, setFreeActivation] = useState(false);
   const [copied, setCopied] = useState(false);
   const [finishConfirmOpen, setFinishConfirmOpen] = useState(false);
   const selectedPlan = useMemo(
@@ -169,10 +171,11 @@ export function SubscriptionCheckout({
     setBusy(true);
     setMessage("");
     try {
-      if (!(await loadRazorpay()) || !window.Razorpay)
+      if (selectedPlan.priceInPaise > 0 && (!(await loadRazorpay()) || !window.Razorpay)) {
         throw new Error(
           "Unable to load Razorpay. Check your internet connection and try again.",
         );
+      }
       const orderResponse = await fetch("/api/subscriptions/order", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -181,6 +184,21 @@ export function SubscriptionCheckout({
       const order = (await orderResponse.json()) as Record<string, unknown>;
       if (!orderResponse.ok)
         throw new Error(String(order.message ?? "Unable to start payment."));
+      if (order.requiresPayment === false) {
+        if (typeof order.licenseKey !== "string" || !order.licenseKey) {
+          throw new Error("Unable to generate the activation key.");
+        }
+        setLicenseKey(order.licenseKey);
+        setLicenseExpiresAt(typeof order.expiresAt === "string" ? order.expiresAt : "");
+        setFreeActivation(true);
+        setStep("SUCCESS");
+        setBusy(false);
+        return;
+      }
+      if (!window.Razorpay && (!(await loadRazorpay()) || !window.Razorpay))
+        throw new Error(
+          "Unable to load Razorpay. Check your internet connection and try again.",
+        );
       let paymentCompleted = false;
       const checkout = new window.Razorpay({
         key: order.keyId,
@@ -233,6 +251,7 @@ export function SubscriptionCheckout({
             }
             setLicenseKey(result.licenseKey);
             setLicenseExpiresAt(result.expiresAt ?? "");
+            setFreeActivation(false);
             setStep("SUCCESS");
             setMessage("");
           } catch {
@@ -300,7 +319,7 @@ export function SubscriptionCheckout({
           </span>
           <div>
             <p className="text-[11px] font-bold uppercase tracking-[.16em] text-emerald-700">
-              Payment successful
+              {freeActivation ? "Free plan activated" : "Payment successful"}
             </p>
             <h2 className="mt-1 text-3xl">Your activation key is ready</h2>
           </div>
@@ -570,10 +589,12 @@ export function SubscriptionCheckout({
               >
                 {busy ? (
                   <LoaderCircle className="animate-spin" size={17} />
+                ) : selectedPlan?.priceInPaise === 0 ? (
+                  <KeyRound size={17} />
                 ) : (
                   <CreditCard size={17} />
                 )}
-                {busy ? "Please wait…" : "Pay securely"}
+                {busy ? "Please wait…" : selectedPlan?.priceInPaise === 0 ? "Generate activation key" : "Pay securely"}
               </button>
             </div>
           </div>
@@ -581,19 +602,28 @@ export function SubscriptionCheckout({
       </div>
       <aside className="h-fit border border-[#dfe3e1] bg-white p-4">
         <ShieldCheck size={24} className="text-[#057c73]" />
-        <h2 className="mt-3 text-xl">Secure purchase</h2>
+        <h2 className="mt-3 text-xl">Secure activation</h2>
         <ul className="mt-3 space-y-2 text-xs leading-5 text-[#6d716f]">
+          {selectedPlan?.priceInPaise === 0 ? (
+            <li className="flex gap-2">
+              <Check size={15} className="mt-0.5 shrink-0 text-[#057c73]" />
+              Free plans do not open Razorpay or require payment.
+            </li>
+          ) : (
+            <>
+              <li className="flex gap-2">
+                <Check size={15} className="mt-0.5 shrink-0 text-[#057c73]" />
+                Razorpay securely handles payment details.
+              </li>
+              <li className="flex gap-2">
+                <Check size={15} className="mt-0.5 shrink-0 text-[#057c73]" />
+                The server verifies the order, amount, and captured payment.
+              </li>
+            </>
+          )}
           <li className="flex gap-2">
             <Check size={15} className="mt-0.5 shrink-0 text-[#057c73]" />
-            Razorpay securely handles payment details.
-          </li>
-          <li className="flex gap-2">
-            <Check size={15} className="mt-0.5 shrink-0 text-[#057c73]" />
-            The server verifies the order, amount, and captured payment.
-          </li>
-          <li className="flex gap-2">
-            <Check size={15} className="mt-0.5 shrink-0 text-[#057c73]" />
-            Your license is issued only after verification.
+            Your license is generated securely and the full key is shown only once.
           </li>
         </ul>
         {selectedPlan ? (

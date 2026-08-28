@@ -80,7 +80,9 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
   Future<void> _delete(InvoiceSummary invoice) async {
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (context) => AppDialog(
+        icon: Icons.delete_outline_rounded,
+        danger: true,
         title: const Text('Delete invoice?'),
         content: Text(
           'Delete ${invoice.invoiceNumber}? Its sold quantities will be returned to stock. This cannot be undone.',
@@ -267,6 +269,81 @@ class _InvoiceDetailScreenState extends State<InvoiceDetailScreen> {
     await next;
   }
 
+  Future<void> _markAsPaid() async {
+    var paymentMethod = 'CASH';
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) => AppDialog(
+          icon: Icons.payments_outlined,
+          title: const Text('Mark invoice as paid'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('Select how the customer paid this invoice.'),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  Expanded(
+                    child: _PaymentMethodTile(
+                      icon: Icons.payments_outlined,
+                      label: 'Cash',
+                      selected: paymentMethod == 'CASH',
+                      onTap: () => setDialogState(() => paymentMethod = 'CASH'),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: _PaymentMethodTile(
+                      icon: Icons.qr_code_rounded,
+                      label: 'UPI / QR',
+                      selected: paymentMethod == 'UPI_QR',
+                      onTap: () =>
+                          setDialogState(() => paymentMethod = 'UPI_QR'),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: _PaymentMethodTile(
+                      icon: Icons.credit_card_rounded,
+                      label: 'Card',
+                      selected: paymentMethod == 'CARD',
+                      onTap: () => setDialogState(() => paymentMethod = 'CARD'),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: const Text('Mark as paid'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    try {
+      await widget.controller.database.markInvoicePaid(
+        widget.invoiceId,
+        paymentMethod,
+      );
+      widget.controller.markDataChanged();
+      await _retry();
+      if (mounted) showMessage(context, 'Invoice marked as paid.');
+    } catch (error) {
+      if (mounted) showMessage(context, errorMessage(error), error: true);
+    }
+  }
+
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(title: const Text('Invoice')),
@@ -418,6 +495,17 @@ class _InvoiceDetailScreenState extends State<InvoiceDetailScreen> {
               ),
             ),
             const SizedBox(height: 14),
+            if (invoice['status'] == 'DUE') ...[
+              FilledButton.icon(
+                onPressed: _markAsPaid,
+                icon: const Icon(Icons.payments_outlined),
+                label: const Text('Mark as paid'),
+                style: FilledButton.styleFrom(
+                  minimumSize: const Size.fromHeight(52),
+                ),
+              ),
+              const SizedBox(height: 10),
+            ],
             FilledButton.icon(
               onPressed: () async {
                 try {
@@ -470,15 +558,15 @@ class _InvoiceDetailScreenState extends State<InvoiceDetailScreen> {
                 minimumSize: const Size.fromHeight(50),
               ),
             ),
-            const SizedBox(height: 10),
-            OutlinedButton.icon(
-              onPressed: () => printInvoice(detail),
-              icon: const Icon(Icons.print),
-              label: const Text('Print A4 using phone'),
-              style: OutlinedButton.styleFrom(
-                minimumSize: const Size.fromHeight(50),
-              ),
-            ),
+            // const SizedBox(height: 10),
+            // OutlinedButton.icon(
+            //   onPressed: () => printInvoice(detail),
+            //   icon: const Icon(Icons.print),
+            //   label: const Text('Print A4 using phone'),
+            //   style: OutlinedButton.styleFrom(
+            //     minimumSize: const Size.fromHeight(50),
+            //   ),
+            // ),
             const SizedBox(height: 10),
             OutlinedButton.icon(
               onPressed: () => showModalBottomSheet<void>(
@@ -496,6 +584,78 @@ class _InvoiceDetailScreenState extends State<InvoiceDetailScreen> {
           ],
         );
       },
+    ),
+  );
+}
+
+class _PaymentMethodTile extends StatelessWidget {
+  const _PaymentMethodTile({
+    required this.icon,
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) => Material(
+    color: selected ? const Color(0xffe6f2f0) : Colors.white,
+    shape: RoundedRectangleBorder(
+      borderRadius: BorderRadius.circular(14),
+      side: BorderSide(
+        color: selected ? const Color(0xff057c73) : const Color(0xffd9dfdd),
+        width: selected ? 1.5 : 1,
+      ),
+    ),
+    child: InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(14),
+      child: Stack(
+        children: [
+          SizedBox(
+            height: 108,
+            width: double.infinity,
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                  icon,
+                  size: 30,
+                  color: selected
+                      ? const Color(0xff057c73)
+                      : const Color(0xff4d5653),
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  label,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: selected
+                        ? const Color(0xff057c73)
+                        : const Color(0xff343c39),
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          if (selected)
+            const Positioned(
+              right: 7,
+              top: 7,
+              child: CircleAvatar(
+                radius: 9,
+                backgroundColor: Color(0xff057c73),
+                child: Icon(Icons.check, color: Colors.white, size: 12),
+              ),
+            ),
+        ],
+      ),
     ),
   );
 }

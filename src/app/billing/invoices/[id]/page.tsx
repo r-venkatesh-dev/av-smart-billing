@@ -20,7 +20,7 @@ export default async function Page({ params, searchParams }: PageProps<"/billing
   const sgstInPaise = invoice.items.reduce((sum, item) => sum + item.sgstInPaise, 0);
   const igstInPaise = invoice.items.reduce((sum, item) => sum + item.igstInPaise, 0);
 
-  return <div className="mx-auto max-w-5xl space-y-5">
+  return <div className="space-y-5">
     <div className="screen-only flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
       <Link href="/billing/invoices" className="focus-ring inline-flex items-center gap-2 text-[11px] font-bold uppercase tracking-[.1em] text-[#057c73]"><ArrowLeft size={15} />All invoices</Link>
       <div className="flex flex-wrap gap-3">{invoice.balanceInPaise > 0 && invoice.status !== "CANCELLED" ? <Link href={`/billing/payments/new?invoiceId=${invoice.id}`} className="focus-ring inline-flex h-11 items-center justify-center gap-2 border border-[#dfe3e1] bg-white px-5 text-[11px] font-bold uppercase tracking-[.1em]"><CreditCard size={16} />Record payment</Link> : null}<PrintInvoiceButton autoPrint={autoPrint} preferThermal={invoice.saleMode === "POS"} thermalWidth={business.thermalPaperWidth} /></div>
