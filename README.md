@@ -122,6 +122,16 @@ Manual smoke test:
 
 `SUPABASE_SERVICE_ROLE_KEY`, `LICENSE_SIGNING_PRIVATE_KEY`, and `LICENSE_KEY_ENCRYPTION_KEY` are server-only. Never expose them with a `NEXT_PUBLIC_` prefix or ship them in a browser/Electron bundle. Generate the license recovery key with `openssl rand -hex 32`, store the same value in every production deployment, and back it up securely; changing or losing it makes stored encrypted license keys unrecoverable.
 
+### Desktop installer releases
+
+Desktop installers are served from this repository's GitHub Releases and are ignored by Git. For each desktop version:
+
+1. Create a GitHub release whose tag is `v` followed by `NEXT_PUBLIC_DESKTOP_VERSION` (for example, `v0.3.0`).
+2. Attach the three installers without renaming them: `AV-Smartbilling-Setup-<version>.exe`, `AV-Smartbilling-<version>-arm64.dmg`, and `AV-Smartbilling-<version>-x64.dmg`.
+3. Update `NEXT_PUBLIC_DESKTOP_VERSION` in the deployment environment and redeploy the website.
+
+The public download page builds its asset URLs from the version, so the release tag and filenames must match exactly. A copy-ready description for `v0.3.0` is available in `release-notes/v0.3.0.md`.
+
 ### Razorpay subscription checkout
 
 The unauthenticated purchase flow is available at `/subscribe`. Configure these server-only Vercel environment variables before accepting payments:

@@ -23,6 +23,10 @@
 /release
 /desktop/generated
 
+# Desktop release binaries are published to Supabase Storage, never Git.
+/public/downloads/*.dmg
+/public/downloads/*.exe
+
 # misc
 .DS_Store
 *.pem
