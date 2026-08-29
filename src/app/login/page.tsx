@@ -4,6 +4,7 @@ import { BrandLogo } from "@/components/brand-logo";
 
 export const metadata = { title: "Sign in" };
 
+
 export default async function LoginPage({ searchParams }: PageProps<"/login">) {
   const { reason, redirectTo } = await searchParams;
   return <main className="grid min-h-screen lg:grid-cols-[1.05fr_.95fr]">
