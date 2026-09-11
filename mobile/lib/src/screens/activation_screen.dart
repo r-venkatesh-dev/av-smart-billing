@@ -173,11 +173,21 @@ class _ActivationScreenState extends State<ActivationScreen> {
                               minimumSize: const Size.fromHeight(52),
                             ),
                           ),
-                          const SizedBox(height: 10),
+                          const SizedBox(height: 8),
+                          Center(
+                            child: Text(
+                              "Don't have a key?",
+                              style: TextStyle(
+                                color: Colors.grey.shade600,
+                                fontSize: 14,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 8),
                           OutlinedButton.icon(
                             onPressed: _busy ? null : _openSubscriptionPage,
                             icon: const Icon(Icons.open_in_browser),
-                            label: const Text('Get your activation key'),
+                            label: const Text('Start Free Trial'),
                             style: OutlinedButton.styleFrom(
                               minimumSize: const Size.fromHeight(52),
                             ),

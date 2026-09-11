@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../app.dart';
 import '../billing_math.dart';
 import '../models.dart';
+import '../sound_service.dart';
 import '../ui_helpers.dart';
 import 'barcode_scanner_screen.dart';
 import 'editor_dialogs.dart';
@@ -103,27 +104,135 @@ class PosScreenState extends State<PosScreen> {
   );
 
   Future<void> startBarcodeScan() async {
-    final value = await Navigator.push<String>(
+    await Navigator.push<void>(
       context,
-      MaterialPageRoute(builder: (_) => const BarcodeScannerScreen()),
+      MaterialPageRoute(
+        builder: (scannerContext) => StatefulBuilder(
+          builder: (context, setScannerState) {
+            final cartItemCount = cart.fold<double>(
+              0,
+              (sum, line) => sum + line.quantity,
+            );
+
+            return BarcodeScannerScreen(
+              title: 'Scan products',
+              onContinuousScan: (scannedBarcode) async {
+                Product? product;
+                try {
+                  product = await widget.controller.database.productByBarcode(
+                    scannedBarcode,
+                  );
+                } catch (error) {
+                  await SoundService.beepError();
+                  return BarcodeScanFeedback(
+                    success: false,
+                    title: 'Database error',
+                    subtitle: errorMessage(error),
+                  );
+                }
+
+                if (product == null || !product.active) {
+                  await SoundService.beepError();
+                  return BarcodeScanFeedback(
+                    success: false,
+                    title: 'No matching product',
+                    subtitle: 'Barcode: $scannedBarcode',
+                  );
+                }
+
+                final targetProduct = product;
+
+                final existing = cart
+                    .where((line) => line.product.id == targetProduct.id)
+                    .firstOrNull;
+                if (existing != null &&
+                    existing.quantity >= targetProduct.stockQuantity) {
+                  await SoundService.beepError();
+                  return BarcodeScanFeedback(
+                    success: false,
+                    title: 'Stock limit reached',
+                    subtitle:
+                        'Only ${formatQuantity(targetProduct.stockQuantity)} available',
+                  );
+                }
+
+                _add(targetProduct);
+                await SoundService.beepSuccess();
+                setScannerState(() {});
+
+                final newQty =
+                    cart
+                        .where((line) => line.product.id == targetProduct.id)
+                        .firstOrNull
+                        ?.quantity ??
+                    1.0;
+
+                return BarcodeScanFeedback(
+                  success: true,
+                  title: 'Added ${targetProduct.name}',
+                  subtitle:
+                      'Qty: ${formatQuantity(newQty)}  •  ${money(targetProduct.priceInPaise)}',
+                );
+              },
+              bottomSummary: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 12,
+                ),
+                decoration: BoxDecoration(
+                  color: const Color(0xff1f2423),
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: Colors.white24),
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            '${formatQuantity(cartItemCount)} in cart',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 15,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            money(total),
+                            style: const TextStyle(
+                              color: Color(0xff8fc5c0),
+                              fontWeight: FontWeight.w600,
+                              fontSize: 13,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    FilledButton.icon(
+                      style: FilledButton.styleFrom(
+                        backgroundColor: const Color(0xff057c73),
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 10,
+                        ),
+                      ),
+                      onPressed: () => Navigator.pop(scannerContext),
+                      icon: const Icon(Icons.check, size: 18),
+                      label: const Text('Finish'),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        ),
+      ),
     );
-    if (value == null) return;
-    Product? product;
-    try {
-      product = await widget.controller.database.productByBarcode(value);
-    } catch (error) {
-      if (mounted) showMessage(context, errorMessage(error), error: true);
-      return;
-    }
-    if (!mounted) return;
-    if (product == null) {
-      return showMessage(
-        context,
-        'No active product matches this barcode.',
-        error: true,
-      );
-    }
-    _add(product);
+    if (mounted) setState(() {});
   }
 
   Future<void> _review() async {

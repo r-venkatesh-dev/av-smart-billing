@@ -1,10 +1,12 @@
 const desktopVersion = process.env.NEXT_PUBLIC_DESKTOP_VERSION?.trim() || "0.3.0";
-const releaseTag = `v${desktopVersion}`;
-const releaseBaseUrl = `https://github.com/r-venkatesh-dev/av-smart-billing/releases/download/${releaseTag}`;
+const defaultDownloadsUrl = "https://pub-51a0e58578b448948e5647729cfd26e7.r2.dev/downloads";
+const configuredDownloadsUrl = process.env.NEXT_PUBLIC_DOWNLOADS_BASE_URL?.trim().replace(/\/+$/, "");
+const releaseBaseUrl = configuredDownloadsUrl || defaultDownloadsUrl;
 
 function installerUrl(filename: string) {
   return `${releaseBaseUrl}/${encodeURIComponent(filename)}`;
 }
+
 
 export const publicDownloads = {
   desktopVersion,
