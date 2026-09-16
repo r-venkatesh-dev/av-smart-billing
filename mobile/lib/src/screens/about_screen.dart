@@ -84,7 +84,7 @@ class _AboutScreenState extends State<AboutScreen> {
         const SizedBox(height: 4),
         Text(
           _versionInfo != null
-              ? 'Version ${_versionInfo!.versionName} (Build ${_versionInfo!.buildNumber})'
+              ? 'Version ${_versionInfo!.versionName} (${_versionInfo!.buildNumber})'
               : 'Version 1.0.0',
           textAlign: TextAlign.center,
           style: const TextStyle(color: Colors.grey, fontWeight: FontWeight.w500),

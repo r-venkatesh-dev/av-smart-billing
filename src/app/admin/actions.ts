@@ -114,6 +114,12 @@ export async function updatePlan(id: string, _state: EntityFormState, formData: 
   if (before.error) return { message: before.error.message };
   const { data, error } = await supabase.from("plans").update({ name: parsed.data.name, description: parsed.data.description, features: parsed.data.features, allow_online_billing: parsed.data.allowOnlineBilling, allow_cloud_backup: parsed.data.allowCloudBackup, allow_reports_exports: parsed.data.allowReportsExports, is_publicly_visible: parsed.data.isPubliclyVisible, max_devices: parsed.data.maxDevices, validation_window_days: parsed.data.validationWindowDays, price_in_paise: rupeesToPaise(parsed.data.priceInRupees), interval: parsed.data.interval, status: parsed.data.status }).eq("id", id).select().single();
   if (error) return { message: error.message };
+  await supabase.from("licenses").update({
+    allow_online_billing: parsed.data.allowOnlineBilling,
+    allow_cloud_backup: parsed.data.allowCloudBackup,
+    allow_reports_exports: parsed.data.allowReportsExports,
+    updated_at: new Date().toISOString(),
+  }).eq("plan_id", id);
   const audit = await supabase.from("audit_logs").insert({ actor_id: actor.id, action: "PLAN_UPDATED", entity_type: "plan", entity_id: id, before_data: before.data, after_data: data });
   if (audit.error) throw new Error(`Audit write failed: ${audit.error.message}`);
   revalidatePath("/plans");

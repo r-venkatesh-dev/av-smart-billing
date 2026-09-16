@@ -245,12 +245,12 @@ class AppUpdateService {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Version ${update.latestVersion} (Build ${update.latestBuildNumber}) is now available.',
+                  'Version ${update.latestVersion} (${update.latestBuildNumber}) is now available.',
                   style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  'Installed: ${update.currentVersion} (Build ${update.currentBuildNumber})',
+                  'Installed: ${update.currentVersion} (${update.currentBuildNumber})',
                   style: const TextStyle(color: Colors.grey, fontSize: 13),
                 ),
                 if (update.isForceUpdate) ...[
