@@ -41,10 +41,37 @@ String errorMessage(Object error) {
 }
 
 void showMessage(BuildContext context, String message, {bool error = false}) {
-  ScaffoldMessenger.of(context).showSnackBar(
+  final messenger = ScaffoldMessenger.maybeOf(context);
+  if (messenger == null) return;
+
+  messenger.hideCurrentSnackBar();
+  messenger.showSnackBar(
     SnackBar(
-      content: Text(message),
-      backgroundColor: error ? Colors.red.shade700 : null,
+      content: Row(
+        children: [
+          Icon(
+            error ? Icons.error_outline : Icons.check_circle_outline,
+            color: Colors.white,
+            size: 20,
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              message,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 14,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+        ],
+      ),
+      backgroundColor: error ? const Color(0xffc53030) : const Color(0xff1f2423),
+      behavior: SnackBarBehavior.floating,
+      margin: const EdgeInsets.fromLTRB(16, 0, 16, 88),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      duration: const Duration(seconds: 3),
     ),
   );
 }
@@ -57,7 +84,7 @@ class AppDialog extends StatelessWidget {
     this.content,
     this.actions = const [],
     this.danger = false,
-    this.showClose = true,
+    this.showClose = false,
     this.contentPadding = const EdgeInsets.fromLTRB(22, 14, 22, 6),
   });
 

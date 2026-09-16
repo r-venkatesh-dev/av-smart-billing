@@ -43,11 +43,11 @@ class InvoicesScreen extends StatefulWidget {
     super.key,
     required this.controller,
     required this.revision,
-    required this.drawer,
+    this.drawer,
   });
   final AppController controller;
   final int revision;
-  final Widget drawer;
+  final Widget? drawer;
 
   @override
   State<InvoicesScreen> createState() => _InvoicesScreenState();
@@ -115,7 +115,21 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
   @override
   Widget build(BuildContext context) => Scaffold(
     drawer: widget.drawer,
-    appBar: AppBar(title: const Text('Invoices')),
+    appBar: AppBar(
+      leading: IconButton(
+        icon: const Icon(Icons.menu),
+        tooltip: 'Open menu',
+        onPressed: () {
+          final root = context.findRootAncestorStateOfType<ScaffoldState>();
+          if (root != null && root.hasDrawer) {
+            root.openDrawer();
+          } else if (widget.drawer != null) {
+            Scaffold.maybeOf(context)?.openDrawer();
+          }
+        },
+      ),
+      title: const Text('Invoices'),
+    ),
     body: Column(
       children: [
         Padding(

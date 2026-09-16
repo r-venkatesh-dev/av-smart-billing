@@ -12,13 +12,13 @@ class DashboardScreen extends StatefulWidget {
     required this.revision,
     required this.onSell,
     required this.onInvoices,
-    required this.drawer,
+    this.drawer,
   });
   final AppController controller;
   final int revision;
   final VoidCallback onSell;
   final VoidCallback onInvoices;
-  final Widget drawer;
+  final Widget? drawer;
 
   @override
   State<DashboardScreen> createState() => _DashboardScreenState();
@@ -54,6 +54,18 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Widget build(BuildContext context) => Scaffold(
     drawer: widget.drawer,
     appBar: AppBar(
+      leading: IconButton(
+        icon: const Icon(Icons.menu),
+        tooltip: 'Open menu',
+        onPressed: () {
+          final root = context.findRootAncestorStateOfType<ScaffoldState>();
+          if (root != null && root.hasDrawer) {
+            root.openDrawer();
+          } else if (widget.drawer != null) {
+            Scaffold.maybeOf(context)?.openDrawer();
+          }
+        },
+      ),
       toolbarHeight: 72,
       titleSpacing: 4,
       title: Row(

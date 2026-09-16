@@ -9,10 +9,10 @@ class ProductsScreen extends StatefulWidget {
   const ProductsScreen({
     super.key,
     required this.controller,
-    required this.drawer,
+    this.drawer,
   });
   final AppController controller;
-  final Widget drawer;
+  final Widget? drawer;
 
   @override
   State<ProductsScreen> createState() => _ProductsScreenState();
@@ -116,6 +116,18 @@ class _ProductsScreenState extends State<ProductsScreen> {
   Widget build(BuildContext context) => Scaffold(
     drawer: widget.drawer,
     appBar: AppBar(
+      leading: IconButton(
+        icon: const Icon(Icons.menu),
+        tooltip: 'Open menu',
+        onPressed: () {
+          final root = context.findRootAncestorStateOfType<ScaffoldState>();
+          if (root != null && root.hasDrawer) {
+            root.openDrawer();
+          } else if (widget.drawer != null) {
+            Scaffold.maybeOf(context)?.openDrawer();
+          }
+        },
+      ),
       title: Text(
         widget.controller.isOnline ? 'Products · Online' : 'Products',
       ),

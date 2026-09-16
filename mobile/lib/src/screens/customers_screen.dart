@@ -132,8 +132,32 @@ class _CustomersScreenState extends State<CustomersScreen> {
     ),
     floatingActionButton: FloatingActionButton.extended(
       onPressed: () => _edit(),
-      icon: const Icon(Icons.person_add_alt_1),
-      label: const Text('Customer'),
+      tooltip: 'Add a new customer',
+      backgroundColor: const Color(0xff057c73),
+      foregroundColor: Colors.white,
+      elevation: 4,
+      highlightElevation: 8,
+      extendedIconLabelSpacing: 10,
+      extendedPadding: const EdgeInsets.fromLTRB(10, 0, 20, 0),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+      icon: const DecoratedBox(
+        decoration: BoxDecoration(
+          color: Color(0x26ffffff),
+          shape: BoxShape.circle,
+        ),
+        child: Padding(
+          padding: EdgeInsets.all(5),
+          child: Icon(Icons.person_add_alt_1, size: 22),
+        ),
+      ),
+      label: const Text(
+        'Add Customer',
+        style: TextStyle(
+          fontSize: 15,
+          fontWeight: FontWeight.w700,
+          letterSpacing: 0.1,
+        ),
+      ),
     ),
   );
 }

@@ -1,7 +1,60 @@
 import 'package:flutter/material.dart';
 
-class AboutScreen extends StatelessWidget {
+import '../app_update_service.dart';
+import '../ui_helpers.dart';
+
+class AboutScreen extends StatefulWidget {
   const AboutScreen({super.key});
+
+  @override
+  State<AboutScreen> createState() => _AboutScreenState();
+}
+
+class _AboutScreenState extends State<AboutScreen> {
+  final _updateService = AppUpdateService();
+  AppVersionInfo? _versionInfo;
+  bool _checking = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadVersion();
+  }
+
+  Future<void> _loadVersion() async {
+    final info = await _updateService.getCurrentVersionInfo();
+    if (mounted) {
+      setState(() => _versionInfo = info);
+    }
+  }
+
+  Future<void> _manualCheckForUpdate() async {
+    if (_checking) return;
+    setState(() => _checking = true);
+
+    try {
+      final result = await _updateService.checkForUpdate(manual: true);
+      if (!mounted) return;
+
+      if (result != null && result.hasUpdate) {
+        await _updateService.showUpdateDialog(context, result);
+      } else {
+        final version = result?.currentVersion ?? _versionInfo?.versionName ?? '1.0.0';
+        showMessage(
+          context,
+          "You're already using the latest version (v$version).",
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        showMessage(context, errorMessage(e), error: true);
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _checking = false);
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) => Scaffold(
@@ -29,12 +82,34 @@ class AboutScreen extends StatelessWidget {
           ).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w800),
         ),
         const SizedBox(height: 4),
-        const Text(
-          'Version 1.0.0',
+        Text(
+          _versionInfo != null
+              ? 'Version ${_versionInfo!.versionName} (Build ${_versionInfo!.buildNumber})'
+              : 'Version 1.0.0',
           textAlign: TextAlign.center,
-          style: TextStyle(color: Colors.grey),
+          style: const TextStyle(color: Colors.grey, fontWeight: FontWeight.w500),
         ),
-        const SizedBox(height: 28),
+        const SizedBox(height: 14),
+        Center(
+          child: OutlinedButton.icon(
+            onPressed: _checking ? null : _manualCheckForUpdate,
+            icon: _checking
+                ? const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.refresh_rounded, size: 18),
+            label: Text(_checking ? 'Checking...' : 'Check for Updates'),
+            style: OutlinedButton.styleFrom(
+              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(20),
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(height: 24),
         const Card(
           child: Padding(
             padding: EdgeInsets.all(20),

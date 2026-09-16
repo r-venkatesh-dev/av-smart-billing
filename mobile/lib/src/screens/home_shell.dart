@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 
 import '../app.dart';
+import '../app_update_service.dart';
 import '../billing_mode_service.dart';
 import '../online_billing_service.dart';
 import '../ui_helpers.dart';
@@ -30,14 +31,29 @@ class HomeShell extends StatefulWidget {
 
 class _HomeShellState extends State<HomeShell> {
   final _sellKey = GlobalKey<PosScreenState>();
+  final _scaffoldKey = GlobalKey<ScaffoldState>();
   int index = 0;
   bool switchingMode = false;
+
 
   @override
   void initState() {
     super.initState();
-    if (widget.controller.isOnline) {
-      WidgetsBinding.instance.addPostFrameCallback((_) => _checkOnlineMode());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (widget.controller.isOnline) {
+        _checkOnlineMode();
+      }
+      _checkAutoUpdate();
+    });
+  }
+
+  Future<void> _checkAutoUpdate() async {
+    try {
+      final update = await AppUpdateService().checkForUpdate();
+      if (!mounted || update == null || !update.hasUpdate) return;
+      await AppUpdateService().showUpdateDialog(context, update);
+    } catch (_) {
+      // Background check must never disrupt app launch or offline billing
     }
   }
 
@@ -247,51 +263,92 @@ class _HomeShellState extends State<HomeShell> {
 
   @override
   Widget build(BuildContext context) {
-    final online = widget.controller.isOnline;
-    final pages = [
-      online
-          ? OnlineFoundationScreen(title: 'Online Billing', drawer: _drawer(0))
-          : DashboardScreen(
-              controller: widget.controller,
-              revision: widget.controller.dataRevision,
-              onSell: () => _selectPage(1),
-              onInvoices: () => _selectPage(3),
-              drawer: _drawer(0),
+    return ListenableBuilder(
+      listenable: widget.controller,
+      builder: (context, _) {
+        final online = widget.controller.isOnline;
+        final pages = [
+          online
+              ? const OnlineFoundationScreen(title: 'Online Billing')
+              : DashboardScreen(
+                  controller: widget.controller,
+                  revision: widget.controller.dataRevision,
+                  onSell: () => _selectPage(1),
+                  onInvoices: () => _selectPage(3),
+                ),
+          online
+              ? const OnlineFoundationScreen(title: 'Online Sell')
+              : PosScreen(
+                  key: _sellKey,
+                  controller: widget.controller,
+                ),
+          ProductsScreen(controller: widget.controller),
+          online
+              ? const OnlineFoundationScreen(title: 'Online Invoices')
+              : InvoicesScreen(
+                  controller: widget.controller,
+                  revision: widget.controller.dataRevision,
+                ),
+        ];
+        return Scaffold(
+          key: _scaffoldKey,
+          drawer: _drawer(index),
+          body: IndexedStack(index: index, children: pages),
+          floatingActionButton: FloatingActionButton(
+            backgroundColor: const Color(0xff057c73),
+            foregroundColor: Colors.white,
+            elevation: 4,
+            highlightElevation: 8,
+            shape: const CircleBorder(),
+            onPressed: online
+                ? () => showMessage(
+                    context,
+                    'Online selling will be available in the next stage.',
+                  )
+                : _scan,
+            tooltip: 'Scan product barcode',
+            child: Container(
+              width: 56,
+              height: 56,
+              decoration: const BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [Color(0xff069186), Color(0xff04625b)],
+                ),
+              ),
+              child: const Icon(
+                Icons.qr_code_scanner_rounded,
+                size: 28,
+                color: Colors.white,
+              ),
             ),
-      online
-          ? OnlineFoundationScreen(title: 'Online Sell', drawer: _drawer(1))
-          : PosScreen(
-              key: _sellKey,
-              controller: widget.controller,
-              drawer: _drawer(1),
-            ),
-      ProductsScreen(controller: widget.controller, drawer: _drawer(2)),
-      online
-          ? OnlineFoundationScreen(title: 'Online Invoices', drawer: _drawer(3))
-          : InvoicesScreen(
-              controller: widget.controller,
-              revision: widget.controller.dataRevision,
-              drawer: _drawer(3),
-            ),
-    ];
-    return Scaffold(
-      body: IndexedStack(index: index, children: pages),
-      floatingActionButton: FloatingActionButton(
-        onPressed: online
-            ? () => showMessage(
-                context,
-                'Online selling will be available in the next stage.',
-              )
-            : _scan,
-        tooltip: 'Scan product barcode',
-        child: const Icon(Icons.qr_code_scanner, size: 28),
-      ),
-      floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
-      bottomNavigationBar: _BottomNavigation(
-        selectedIndex: index,
-        onSelect: _selectPage,
-      ),
+          ),
+          floatingActionButtonLocation:
+              const FixedCenterDockedFloatingActionButtonLocation(),
+          bottomNavigationBar: _BottomNavigation(
+            selectedIndex: index,
+            onSelect: _selectPage,
+          ),
+        );
+      },
     );
+  }
+}
+
+class FixedCenterDockedFloatingActionButtonLocation
+    extends FloatingActionButtonLocation {
+  const FixedCenterDockedFloatingActionButtonLocation();
+
+  @override
+  Offset getOffset(ScaffoldPrelayoutGeometry scaffoldGeometry) {
+    final double fabX = (scaffoldGeometry.scaffoldSize.width -
+            scaffoldGeometry.floatingActionButtonSize.width) /
+        2.0;
+    final double contentBottom = scaffoldGeometry.contentBottom;
+    final double fabHeight = scaffoldGeometry.floatingActionButtonSize.height;
+    return Offset(fabX, contentBottom - fabHeight / 2.0);
   }
 }
 

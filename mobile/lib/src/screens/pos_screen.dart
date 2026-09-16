@@ -10,9 +10,9 @@ import 'editor_dialogs.dart';
 import 'invoices_screen.dart';
 
 class PosScreen extends StatefulWidget {
-  const PosScreen({super.key, required this.controller, required this.drawer});
+  const PosScreen({super.key, required this.controller, this.drawer});
   final AppController controller;
-  final Widget drawer;
+  final Widget? drawer;
 
   @override
   State<PosScreen> createState() => PosScreenState();
@@ -381,6 +381,18 @@ class PosScreenState extends State<PosScreen> {
     return Scaffold(
       drawer: widget.drawer,
       appBar: AppBar(
+        leading: IconButton(
+          icon: const Icon(Icons.menu),
+          tooltip: 'Open menu',
+          onPressed: () {
+            final root = context.findRootAncestorStateOfType<ScaffoldState>();
+            if (root != null && root.hasDrawer) {
+              root.openDrawer();
+            } else if (widget.drawer != null) {
+              Scaffold.maybeOf(context)?.openDrawer();
+            }
+          },
+        ),
         title: const Text('Quick Sell'),
         actions: [
           IconButton(

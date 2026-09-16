@@ -4,16 +4,30 @@ class OnlineFoundationScreen extends StatelessWidget {
   const OnlineFoundationScreen({
     super.key,
     required this.title,
-    required this.drawer,
+    this.drawer,
   });
 
   final String title;
-  final Widget drawer;
+  final Widget? drawer;
 
   @override
   Widget build(BuildContext context) => Scaffold(
     drawer: drawer,
-    appBar: AppBar(title: Text(title)),
+    appBar: AppBar(
+      leading: IconButton(
+        icon: const Icon(Icons.menu),
+        tooltip: 'Open menu',
+        onPressed: () {
+          final root = context.findRootAncestorStateOfType<ScaffoldState>();
+          if (root != null && root.hasDrawer) {
+            root.openDrawer();
+          } else if (drawer != null) {
+            Scaffold.maybeOf(context)?.openDrawer();
+          }
+        },
+      ),
+      title: Text(title),
+    ),
     body: Center(
       child: SingleChildScrollView(
         padding: const EdgeInsets.all(24),
