@@ -21,10 +21,17 @@ class PosScreen extends StatefulWidget {
 class PosScreenState extends State<PosScreen> {
   List<Product> products = [];
   final List<CartLine> cart = [];
+  final _searchController = TextEditingController();
   String query = '';
   bool loading = true;
   Object? loadError;
   int heldCount = 0;
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
 
   @override
   void initState() {
@@ -371,6 +378,8 @@ class PosScreenState extends State<PosScreen> {
 
   @override
   Widget build(BuildContext context) {
+    const tealHeaderColor = Color(0xff004d40);
+
     final matches = products.where((product) {
       final term = query.toLowerCase();
       return term.isEmpty ||
@@ -378,43 +387,139 @@ class PosScreenState extends State<PosScreen> {
           product.sku.toLowerCase().contains(term) ||
           product.barcode.contains(term);
     }).toList();
+
     return Scaffold(
+      backgroundColor: const Color(0xfff8fafc),
       drawer: widget.drawer,
       appBar: AppBar(
-        leading: IconButton(
-          icon: const Icon(Icons.menu),
-          tooltip: 'Open menu',
-          onPressed: () {
-            final root = context.findRootAncestorStateOfType<ScaffoldState>();
-            if (root != null && root.hasDrawer) {
-              root.openDrawer();
-            } else if (widget.drawer != null) {
-              Scaffold.maybeOf(context)?.openDrawer();
-            }
-          },
+        backgroundColor: tealHeaderColor,
+        foregroundColor: Colors.white,
+        elevation: 0,
+        scrolledUnderElevation: 0,
+        centerTitle: true,
+        leading: Builder(
+          builder: (ctx) => IconButton(
+            icon: const Icon(Icons.menu, color: Colors.white),
+            tooltip: 'Open menu',
+            onPressed: () {
+              final scaffold = Scaffold.maybeOf(ctx);
+              if (scaffold != null && scaffold.hasDrawer) {
+                scaffold.openDrawer();
+                return;
+              }
+              final root = ctx.findRootAncestorStateOfType<ScaffoldState>();
+              if (root != null && root.hasDrawer) {
+                root.openDrawer();
+              }
+            },
+          ),
         ),
-        title: const Text('Quick Sell'),
+        title: Text(
+          widget.controller.isOnline ? 'Quick Sell · Online' : 'Quick Sell',
+          style: const TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.w700,
+            fontSize: 20,
+            letterSpacing: 0.2,
+          ),
+        ),
         actions: [
+          IconButton(
+            onPressed: startBarcodeScan,
+            tooltip: 'Scan barcode',
+            icon: const Icon(Icons.qr_code_scanner_rounded, color: Colors.white),
+          ),
           IconButton(
             onPressed: _showHeldBills,
             tooltip: 'Held bills',
             icon: Badge(
               isLabelVisible: heldCount > 0,
               label: Text('$heldCount'),
-              child: const Icon(Icons.pause_circle_outline),
+              child: const Icon(Icons.pause_circle_outline, color: Colors.white),
             ),
           ),
         ],
       ),
       body: Column(
         children: [
-          Padding(
-            padding: const EdgeInsets.all(16),
-            child: TextField(
-              onChanged: (value) => setState(() => query = value),
-              decoration: const InputDecoration(
-                prefixIcon: Icon(Icons.search),
-                hintText: 'Search products',
+          // Teal top bar container containing the rounded search bar
+          Container(
+            color: tealHeaderColor,
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
+            child: Container(
+              height: 48,
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(12),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.06),
+                    blurRadius: 8,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: Row(
+                children: [
+                  const SizedBox(width: 12),
+                  const Icon(
+                    Icons.search_rounded,
+                    color: Color(0xff64748b),
+                    size: 22,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: TextField(
+                      controller: _searchController,
+                      onChanged: (value) => setState(() => query = value),
+                      decoration: const InputDecoration(
+                        hintText: 'Search products by name, SKU or barcode...',
+                        hintStyle: TextStyle(
+                          color: Color(0xff94a3b8),
+                          fontSize: 14,
+                          fontWeight: FontWeight.w400,
+                        ),
+                        border: InputBorder.none,
+                        enabledBorder: InputBorder.none,
+                        focusedBorder: InputBorder.none,
+                        contentPadding: EdgeInsets.zero,
+                        isDense: true,
+                      ),
+                      style: const TextStyle(
+                        fontSize: 14,
+                        color: Color(0xff1e293b),
+                      ),
+                    ),
+                  ),
+                  if (query.isNotEmpty)
+                    IconButton(
+                      icon: const Icon(
+                        Icons.clear_rounded,
+                        size: 20,
+                        color: Color(0xff64748b),
+                      ),
+                      splashRadius: 18,
+                      onPressed: () {
+                        _searchController.clear();
+                        setState(() => query = '');
+                      },
+                    ),
+                  Container(
+                    height: 24,
+                    width: 1,
+                    color: const Color(0xffe2e8f0),
+                  ),
+                  IconButton(
+                    icon: const Icon(
+                      Icons.qr_code_scanner_rounded,
+                      color: Color(0xff004d40),
+                      size: 20,
+                    ),
+                    tooltip: 'Scan barcode',
+                    onPressed: startBarcodeScan,
+                  ),
+                  const SizedBox(width: 4),
+                ],
               ),
             ),
           ),
@@ -470,14 +575,68 @@ class PosScreenState extends State<PosScreen> {
                                           color: Colors.grey.shade700,
                                         ),
                                       ),
-                                      const SizedBox(height: 4),
-                                      Text(
-                                        stockLabel(
-                                          product.stockQuantity,
-                                          product.unit,
+                                      const SizedBox(height: 5),
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 7,
+                                          vertical: 2.5,
                                         ),
-                                        style: const TextStyle(
-                                          fontWeight: FontWeight.w600,
+                                        decoration: BoxDecoration(
+                                          color: product.stockQuantity <= 0
+                                              ? const Color(0xfffef2f2)
+                                              : product.stockQuantity <= 5
+                                                  ? const Color(0xfffffbeb)
+                                                  : const Color(0xfff1f5f9),
+                                          borderRadius:
+                                              BorderRadius.circular(6),
+                                          border: Border.all(
+                                            color: product.stockQuantity <= 0
+                                                ? const Color(0xfffecaca)
+                                                : product.stockQuantity <= 5
+                                                    ? const Color(0xfffde68a)
+                                                    : const Color(0xffe2e8f0),
+                                            width: 0.8,
+                                          ),
+                                        ),
+                                        child: Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            Icon(
+                                              product.stockQuantity <= 0
+                                                  ? Icons.cancel_outlined
+                                                  : product.stockQuantity <= 5
+                                                      ? Icons
+                                                          .warning_amber_rounded
+                                                      : Icons
+                                                          .inventory_2_outlined,
+                                              size: 13,
+                                              color: product.stockQuantity <= 0
+                                                  ? const Color(0xffdc2626)
+                                                  : product.stockQuantity <= 5
+                                                      ? const Color(
+                                                          0xffd97706)
+                                                      : const Color(
+                                                          0xff475569),
+                                            ),
+                                            const SizedBox(width: 4),
+                                            Text(
+                                              stockLabel(
+                                                product.stockQuantity,
+                                                product.unit,
+                                              ),
+                                              style: TextStyle(
+                                                color: product.stockQuantity <= 0
+                                                    ? const Color(0xffdc2626)
+                                                    : product.stockQuantity <= 5
+                                                        ? const Color(
+                                                            0xffb45309)
+                                                        : const Color(
+                                                            0xff334155),
+                                                fontSize: 12,
+                                                fontWeight: FontWeight.w600,
+                                              ),
+                                            ),
+                                          ],
                                         ),
                                       ),
                                       if (product.discountPercent > 0)

@@ -91,6 +91,23 @@ class _ProductEditorDialogState extends State<ProductEditorDialog> {
   String? _number(String? value) =>
       double.tryParse(value ?? '') == null ? 'Enter a number' : null;
 
+  String _cleanUnit(String value) {
+    var clean = value.trim();
+    final match = RegExp(r'^\d+[\s\-_]*(.*)$').firstMatch(clean);
+    if (match != null && match.group(1)!.trim().isNotEmpty) {
+      clean = match.group(1)!.trim();
+    }
+    final lower = clean.toLowerCase();
+    if (lower == '1' ||
+        lower == 'pc' ||
+        lower == 'pcs' ||
+        lower == 'piece' ||
+        lower == 'pieces') {
+      return 'pcs';
+    }
+    return clean.isEmpty ? 'pcs' : clean;
+  }
+
   Future<void> _save() async {
     if (!form.currentState!.validate()) return;
     setState(() => saving = true);
@@ -100,7 +117,7 @@ class _ProductEditorDialogState extends State<ProductEditorDialog> {
         name: name.text,
         sku: sku.text,
         barcode: barcode.text,
-        unit: unit.text,
+        unit: _cleanUnit(unit.text),
         price: double.parse(price.text),
         taxRate: double.parse(tax.text),
         discountPercent: double.parse(discount.text),
@@ -232,14 +249,38 @@ class _ProductEditorDialogState extends State<ProductEditorDialog> {
                       validator: (value) {
                         final text = (value ?? '').trim();
                         if (text.isEmpty) return 'Enter a unit';
-                        if (double.tryParse(text) != null) {
-                          return 'Use pcs, kg, box, etc.';
-                        }
                         return null;
                       },
                     ),
                   ),
                 ],
+              ),
+              const SizedBox(height: 6),
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  children: [
+                    for (final item in const [
+                      'pcs',
+                      'kg',
+                      'box',
+                      'packet',
+                      'litre',
+                      'meter',
+                    ])
+                      Padding(
+                        padding: const EdgeInsets.only(right: 6),
+                        child: ActionChip(
+                          label: Text(item, style: const TextStyle(fontSize: 12)),
+                          padding: EdgeInsets.zero,
+                          visualDensity: VisualDensity.compact,
+                          onPressed: () {
+                            setState(() => unit.text = item);
+                          },
+                        ),
+                      ),
+                  ],
+                ),
               ),
             ],
           ),

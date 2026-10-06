@@ -11,7 +11,22 @@ String formatQuantity(num value) {
 }
 
 String readableUnit(String value, {num quantity = 2}) {
-  final unit = value.trim();
+  var unit = value.trim();
+  // Strip leading count/digits like "1pcs", "1 pcs", "1-pcs", "1 piece", "1 unit"
+  final leadingCountMatch = RegExp(r'^\d+[\s\-_]*(.*)$').firstMatch(unit);
+  if (leadingCountMatch != null && leadingCountMatch.group(1)!.trim().isNotEmpty) {
+    unit = leadingCountMatch.group(1)!.trim();
+  }
+
+  final lower = unit.toLowerCase();
+  if (lower == '1' ||
+      lower == 'pc' ||
+      lower == 'pcs' ||
+      lower == 'piece' ||
+      lower == 'pieces') {
+    return quantity.toDouble() == 1 ? 'pc' : 'pcs';
+  }
+
   if (unit.isEmpty || double.tryParse(unit) != null || unit.length > 16) {
     return quantity.toDouble() == 1 ? 'item' : 'items';
   }
@@ -19,8 +34,7 @@ String readableUnit(String value, {num quantity = 2}) {
 }
 
 String stockLabel(num quantity, String unit) =>
-    'Stock: ${formatQuantity(quantity)}';
-        // 'Stock: ${formatQuantity(quantity)} - ${readableUnit(unit, quantity: quantity)}';
+    'Stock: ${formatQuantity(quantity)} ${readableUnit(unit, quantity: quantity)}';
 
 String formatPercent(num value) => '${formatQuantity(value)}%';
 

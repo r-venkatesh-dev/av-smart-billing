@@ -56,12 +56,52 @@ export function QuickPos({ products, customers, paymentQrUrl = "", initialHeldBi
     return () => document.removeEventListener("keydown", shortcut);
   }, []);
 
+  function playPosSound(success = true) {
+    try {
+      const AudioContextClass = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+      if (!AudioContextClass) return;
+      const ctx = new AudioContextClass();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      const now = ctx.currentTime;
+      if (success) {
+        osc.type = "sine";
+        osc.frequency.setValueAtTime(1760, now);
+        gain.gain.setValueAtTime(0.12, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.12);
+        osc.start(now);
+        osc.stop(now + 0.12);
+      } else {
+        osc.type = "sawtooth";
+        osc.frequency.setValueAtTime(220, now);
+        gain.gain.setValueAtTime(0.15, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.22);
+        osc.start(now);
+        osc.stop(now + 0.22);
+      }
+    } catch {}
+  }
+
   function add(product: PosProduct) {
+    let success = true;
     setCart((current) => {
       const found = current.find((line) => line.productId === product.id);
-      if (!found) return [...current, { productId: product.id, quantity: 1, discountPercent: 0 }];
+      if (!found) {
+        if (product.stockQuantity <= 0) {
+          success = false;
+          return current;
+        }
+        return [...current, { productId: product.id, quantity: 1, discountPercent: 0 }];
+      }
+      if (found.quantity >= product.stockQuantity) {
+        success = false;
+        return current;
+      }
       return current.map((line) => line.productId === product.id ? { ...line, quantity: Math.min(product.stockQuantity, line.quantity + 1) } : line);
     });
+    playPosSound(success);
     setQuery("");
     barcodeRef.current?.focus();
   }
@@ -137,8 +177,16 @@ export function QuickPos({ products, customers, paymentQrUrl = "", initialHeldBi
     event.preventDefault();
     const value = barcodeRef.current?.value.trim().toLowerCase();
     const product = products.find((item) => item.barcode?.toLowerCase() === value || item.sku.toLowerCase() === value);
-    if (product) { add(product); if (barcodeRef.current) barcodeRef.current.value = ""; }
-    else if (barcodeRef.current) { barcodeRef.current.setCustomValidity("No active in-stock product matches this barcode or SKU."); barcodeRef.current.reportValidity(); }
+    if (product) {
+      add(product);
+      if (barcodeRef.current) barcodeRef.current.value = "";
+    } else {
+      playPosSound(false);
+      if (barcodeRef.current) {
+        barcodeRef.current.setCustomValidity("No active in-stock product matches this barcode or SKU.");
+        barcodeRef.current.reportValidity();
+      }
+    }
   }
 
   const effectiveAmountReceived = amountReceived || (totals.total / 100).toFixed(2);

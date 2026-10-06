@@ -286,3 +286,244 @@ export async function adjustBillingStock(_state: BillingFormState, formData: For
   revalidatePath("/billing/products");
   return { message: "Stock movement recorded." };
 }
+
+export interface BulkProductImportRow {
+  name: string;
+  price: number;
+  stockQuantity: number;
+  unit?: string;
+  sku?: string;
+  barcode?: string;
+  taxRate?: number;
+  discount?: number;
+  category?: string;
+}
+
+export interface BulkCustomerImportRow {
+  name: string;
+  phone?: string;
+  email?: string;
+  address?: string;
+  gstin?: string;
+}
+
+export interface BulkImportResult {
+  ok: boolean;
+  added: number;
+  updated: number;
+  errors: string[];
+}
+
+export async function bulkImportBillingProducts(rows: BulkProductImportRow[]): Promise<BulkImportResult> {
+  const access = await requireBillingAccess(["OWNER", "ADMIN", "SUPPORT"]);
+  const business = await getBillingBusiness();
+  if (!business) return { ok: false, added: 0, updated: 0, errors: ["No billing workspace found."] };
+  if (!Array.isArray(rows) || rows.length === 0) {
+    return { ok: false, added: 0, updated: 0, errors: ["No rows provided for import."] };
+  }
+
+  const supabase = await createBillingDataClient();
+  const { data: existingProducts, error: fetchErr } = await supabase
+    .from("billing_products")
+    .select("id, name, sku, barcode, stock_quantity")
+    .eq("business_id", business.id);
+
+  if (fetchErr) return { ok: false, added: 0, updated: 0, errors: [fetchErr.message] };
+
+  let added = 0;
+  let updated = 0;
+  const errors: string[] = [];
+
+  for (let i = 0; i < rows.length; i++) {
+    const row = rows[i];
+    const name = (row.name ?? "").trim();
+    if (!name) {
+      errors.push(`Row ${i + 1}: Product name is required.`);
+      continue;
+    }
+    const priceInPaise = Math.round((Number(row.price) || 0) * 100);
+    const stockQty = Math.max(0, Number(row.stockQuantity) || 0);
+    const unit = (row.unit ?? "").trim() || "pcs";
+    const sku = (row.sku ?? "").trim();
+    const barcode = (row.barcode ?? "").trim() || null;
+    const taxRateBasisPoints = Math.round((Number(row.taxRate) || 0) * 100);
+    const category = (row.category ?? "").trim() || "General";
+
+    // Match duplicate: by SKU if present, or barcode if present, or exact name (case-insensitive)
+    const match = existingProducts?.find((p) => {
+      if (sku && p.sku && p.sku.toLowerCase() === sku.toLowerCase()) return true;
+      if (barcode && p.barcode && p.barcode.toLowerCase() === barcode.toLowerCase()) return true;
+      return p.name.toLowerCase() === name.toLowerCase();
+    });
+
+    if (match) {
+      const { error: updateErr } = await supabase
+        .from("billing_products")
+        .update({
+          price_in_paise: priceInPaise,
+          stock_quantity: stockQty,
+          unit,
+          tax_rate_basis_points: taxRateBasisPoints,
+          ...(barcode ? { barcode } : {}),
+          status: "ACTIVE",
+        })
+        .eq("id", match.id)
+        .eq("business_id", business.id);
+
+      if (updateErr) {
+        errors.push(`Row ${i + 1} (${name}): ${updateErr.message}`);
+      } else {
+        const qtyDiff = stockQty - Number(match.stock_quantity);
+        if (qtyDiff !== 0) {
+          await supabase.from("billing_stock_movements").insert({
+            business_id: business.id,
+            product_id: match.id,
+            movement_type: "ADJUSTMENT",
+            quantity_change: qtyDiff,
+            quantity_after: stockQty,
+            reference_type: "PRODUCT",
+            reference_id: match.id,
+            notes: "Excel bulk import update",
+            created_by: access.actorId,
+          });
+        }
+        match.stock_quantity = stockQty;
+        updated++;
+      }
+    } else {
+      const generatedSku = sku || `SKU-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).substring(2, 5).toUpperCase()}`;
+      const { data: newProd, error: insertErr } = await supabase
+        .from("billing_products")
+        .insert({
+          business_id: business.id,
+          name,
+          sku: generatedSku,
+          barcode,
+          category,
+          hsn_sac: "",
+          description: "",
+          unit,
+          purchase_price_in_paise: 0,
+          price_in_paise: priceInPaise,
+          tax_rate_basis_points: taxRateBasisPoints,
+          stock_quantity: stockQty,
+          low_stock_threshold: business.lowStockThreshold,
+          status: "ACTIVE",
+        })
+        .select("id, name, sku, barcode, stock_quantity")
+        .single();
+
+      if (insertErr) {
+        errors.push(`Row ${i + 1} (${name}): ${insertErr.message}`);
+      } else {
+        if (stockQty > 0) {
+          await supabase.from("billing_stock_movements").insert({
+            business_id: business.id,
+            product_id: newProd.id,
+            movement_type: "OPENING",
+            quantity_change: stockQty,
+            quantity_after: stockQty,
+            reference_type: "PRODUCT",
+            reference_id: newProd.id,
+            notes: "Excel bulk import opening stock",
+            created_by: access.actorId,
+          });
+        }
+        existingProducts?.push(newProd);
+        added++;
+      }
+    }
+  }
+
+  revalidatePath("/billing/products");
+  revalidatePath("/billing/inventory");
+  revalidatePath("/billing/pos");
+  return { ok: true, added, updated, errors };
+}
+
+export async function bulkImportBillingCustomers(rows: BulkCustomerImportRow[]): Promise<BulkImportResult> {
+  await requireBillingAccess(["OWNER", "ADMIN", "SUPPORT"]);
+  const business = await getBillingBusiness();
+  if (!business) return { ok: false, added: 0, updated: 0, errors: ["No billing workspace found."] };
+  if (!Array.isArray(rows) || rows.length === 0) {
+    return { ok: false, added: 0, updated: 0, errors: ["No rows provided for import."] };
+  }
+
+  const supabase = await createBillingDataClient();
+  const { data: existingCustomers, error: fetchErr } = await supabase
+    .from("billing_customers")
+    .select("id, name, phone, gstin")
+    .eq("business_id", business.id);
+
+  if (fetchErr) return { ok: false, added: 0, updated: 0, errors: [fetchErr.message] };
+
+  let added = 0;
+  let updated = 0;
+  const errors: string[] = [];
+
+  for (let i = 0; i < rows.length; i++) {
+    const row = rows[i];
+    const name = (row.name ?? "").trim();
+    if (!name) {
+      errors.push(`Row ${i + 1}: Customer name is required.`);
+      continue;
+    }
+    const phone = (row.phone ?? "").trim();
+    const email = (row.email ?? "").trim() || null;
+    const address = (row.address ?? "").trim();
+    const gstin = (row.gstin ?? "").trim() || null;
+
+    // Match duplicate: by phone if provided, or exact name (case-insensitive)
+    const match = existingCustomers?.find((c) => {
+      if (phone && c.phone && c.phone === phone) return true;
+      return c.name.toLowerCase() === name.toLowerCase();
+    });
+
+    if (match) {
+      const { error: updateErr } = await supabase
+        .from("billing_customers")
+        .update({
+          name,
+          phone: phone || match.phone,
+          ...(email ? { email } : {}),
+          ...(address ? { address } : {}),
+          ...(gstin ? { gstin } : {}),
+          status: "ACTIVE",
+        })
+        .eq("id", match.id)
+        .eq("business_id", business.id);
+
+      if (updateErr) {
+        errors.push(`Row ${i + 1} (${name}): ${updateErr.message}`);
+      } else {
+        updated++;
+      }
+    } else {
+      const { data: newCust, error: insertErr } = await supabase
+        .from("billing_customers")
+        .insert({
+          business_id: business.id,
+          name,
+          phone,
+          email,
+          address,
+          gstin,
+          status: "ACTIVE",
+        })
+        .select("id, name, phone, gstin")
+        .single();
+
+      if (insertErr) {
+        errors.push(`Row ${i + 1} (${name}): ${insertErr.message}`);
+      } else {
+        existingCustomers?.push(newCust);
+        added++;
+      }
+    }
+  }
+
+  revalidatePath("/billing/customers");
+  revalidatePath("/billing/pos");
+  revalidatePath("/billing/invoices/new");
+  return { ok: true, added, updated, errors };
+}

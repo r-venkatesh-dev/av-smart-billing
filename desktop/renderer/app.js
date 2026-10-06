@@ -6,7 +6,8 @@ const icon = (name, className = "") => window.AVSBIcon(name, className);
 
 const navItems = [
   ["dashboard", "dashboard", "Dashboard"], ["pos", "cart", "Quick POS"], ["customers", "users", "Customers"], ["products", "package", "Products"],
-  ["inventory", "inventory", "Inventory"], ["invoices", "file", "Invoices"], ["payments", "payment", "Payments"], ["reports", "reports", "Reports"], ["settings", "settings", "Settings"],
+  ["inventory", "inventory", "Inventory"], ["invoices", "file", "Invoices"], ["payments", "payment", "Payments"], ["reports", "reports", "Reports"],
+  ["calculator", "calculator", "GST Calculator"], ["settings", "settings", "Settings"],
 ];
 
 function esc(value) {
@@ -22,6 +23,33 @@ function phoneDigits(value) { return String(value || "").replace(/\D/g, "").slic
 function formatLicenseKey(value) {
   const characters = String(value || "").toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 16);
   return characters.match(/.{1,4}/g)?.join("-") || "";
+}
+function playPosSound(success = true) {
+  try {
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    if (!AudioCtx) return;
+    const ctx = new AudioCtx();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    if (success) {
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(1760, ctx.currentTime);
+      gain.gain.setValueAtTime(0.15, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.08);
+      osc.start(ctx.currentTime);
+      osc.stop(ctx.currentTime + 0.08);
+    } else {
+      osc.type = "sawtooth";
+      osc.frequency.setValueAtTime(220, ctx.currentTime);
+      gain.gain.setValueAtTime(0.2, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.25);
+      osc.start(ctx.currentTime);
+      osc.stop(ctx.currentTime + 0.25);
+    }
+    setTimeout(() => { ctx.close().catch(() => {}); }, 300);
+  } catch {}
 }
 function configureRestrictedInput(input) {
   if (!(input instanceof HTMLInputElement)) return;
@@ -140,7 +168,6 @@ function renderActivation() {
       <div class="field full"><button class="button" type="submit">Activate software</button></div>
     </form>
     ${expired ? `<button id="validate-license" class="button secondary" style="width:100%;margin-top:12px">Validate stored activation online</button>` : ""}
-    <p class="muted" style="font-size:11px;margin-top:20px">The admin Control Center is not included in this software.</p>
   </section></main>`;
   document.getElementById("activation-form").addEventListener("submit", async (event) => {
     event.preventDefault();
@@ -209,6 +236,7 @@ async function navigate(page, detail) {
     if (page === "payments") await renderPayments(content);
     if (page === "payment-form") await renderPaymentForm(content, detail);
     if (page === "reports") await renderReports(content);
+    if (page === "calculator") await renderCalculator(content);
     if (page === "settings") await renderSettings(content);
   } catch (error) { content.innerHTML = `${pageHeader("Local database", "Unable to load page", error.message)}<p class="notice error">${esc(error.message)}</p>`; }
 }
@@ -216,6 +244,13 @@ async function navigate(page, detail) {
 async function renderDashboard(content) {
   const data = await invoke("billing:dashboard"); state.business = data.business;
   const max = Math.max(...data.trend.map((row) => row.sales), 1);
+  if (data.counts.low_stock > 0 && !state.lowStockNotified) {
+    state.lowStockNotified = true;
+    invoke("app:notify", {
+      title: "Low Stock Alert",
+      body: `${data.counts.low_stock} product(s) have reached the low stock threshold.`,
+    }).catch(() => {});
+  }
   content.innerHTML = `${pageHeader(data.business.company_name, "Billing dashboard", "Today's activity and live totals from this computer's SQLite database.", `<div class="invoice-actions"><button class="button secondary" data-go="product-form">Add product</button><button class="button" data-go="pos">New sale</button></div>`)}<section class="cards"><article class="card"><small>Today's sales</small><strong>${money(data.today.sales)}</strong><span class="table-sub">${data.today.invoices} invoice${data.today.invoices===1?"":"s"}</span></article><article class="card"><small>Total collected</small><strong>${money(data.counts.received)}</strong></article><article class="card"><small>Outstanding</small><strong>${money(data.counts.outstanding)}</strong></article><article class="card"><small>Low stock</small><strong>${data.counts.low_stock}</strong></article></section><div class="dashboard-grid"><section class="surface"><div class="surface-head"><h2>Last 7 days</h2></div><div class="trend-chart">${data.trend.length ? data.trend.map((row) => `<div class="trend-row"><span>${date(row.day)}</span><i><b style="width:${Math.max(2,row.sales/max*100)}%"></b></i><strong>${money(row.sales)}</strong></div>`).join("") : `<p class="empty">No recent sales.</p>`}</div></section><section class="surface"><div class="surface-head"><h2>Low-stock products</h2><button class="link-button" data-go="inventory">View inventory</button></div>${data.lowStock.length ? `<div class="compact-list">${data.lowStock.map((row) => `<div><span><b>${esc(row.name)}</b><small>${esc(row.sku)}</small></span><strong>${row.stock_quantity} ${esc(row.unit)}</strong></div>`).join("")}</div>` : `<p class="empty">Stock levels are healthy.</p>`}</section></div><section class="surface"><div class="surface-head"><h2>Recent invoices</h2><button class="button" data-go="invoice-form">Create invoice</button></div>${invoiceTable(data.recent)}</section>`;
   content.querySelectorAll("[data-go]").forEach((button) => button.addEventListener("click", () => navigate(button.dataset.go))); bindInvoiceLinks(content);
 }
@@ -242,9 +277,13 @@ async function renderPos(content) {
   function addProduct(product) {
     const current = draft.items.find((item) => item.productId === product.id);
     if (current) {
-      if (Number(current.quantity) + 1 > product.stock_quantity) return notify(`Only ${product.stock_quantity} ${product.unit} available.`, true);
+      if (Number(current.quantity) + 1 > product.stock_quantity) {
+        playPosSound(false);
+        return notify(`Only ${product.stock_quantity} ${product.unit} available.`, true);
+      }
       current.quantity = Number(current.quantity) + 1;
     } else draft.items.push({ productId: product.id, quantity: 1, discountPercent: 0 });
+    playPosSound(true);
     draft.search = "";
     paint("barcode");
   }
@@ -270,7 +309,10 @@ async function renderPos(content) {
       event.preventDefault();
       const value = document.getElementById("barcode-input").value.trim().toLowerCase();
       const product = products.find((row) => String(row.barcode || "").toLowerCase() === value || row.sku.toLowerCase() === value);
-      if (!product) return notify("No active in-stock product matches that barcode or SKU.", true);
+      if (!product) {
+        playPosSound(false);
+        return notify("No active in-stock product matches that barcode or SKU.", true);
+      }
       addProduct(product);
     });
     document.getElementById("pos-search").addEventListener("input", (event) => { draft.search = event.target.value; paint("search"); });
@@ -321,8 +363,32 @@ function bindInvoiceLinks(container) { container.querySelectorAll("[data-invoice
 
 async function renderCustomers(content) {
   const rows = await invoke("billing:customers");
-  content.innerHTML = `${pageHeader("Local records", "Customers", "Customer information stored only on this computer.", `<button class="button" id="new-customer">Add customer</button>`)}<section class="surface">${rows.length ? `<div class="table-wrap"><table><thead><tr><th>Name</th><th>Phone</th><th>Email</th><th>GSTIN</th><th>Invoices</th><th>Status</th><th></th></tr></thead><tbody>${rows.map((row) => `<tr data-filter-row><td><b>${esc(row.name)}</b></td><td>${esc(row.phone || "—")}</td><td>${esc(row.email || "—")}</td><td>${esc(row.gstin || "—")}</td><td>${row.invoice_count}</td><td>${status(row.status)}</td><td class="actions"><button class="link-button" data-edit-customer="${esc(row.id)}">Edit</button> <button class="link-button danger-text" data-delete-customer="${esc(row.id)}" data-name="${esc(row.name)}">Delete</button></td></tr>`).join("")}</tbody></table></div>` : `<p class="empty">No local customers yet.</p>`}</section>`;
+  content.innerHTML = `${pageHeader("Local records", "Customers", "Customer information stored only on this computer.", `<div class="invoice-actions"><button class="button secondary" id="excel-template-customers">Template</button><button class="button secondary" id="excel-import-customers">Import Excel</button><button class="button secondary" id="excel-export-customers">Export Excel</button><button class="button" id="new-customer">Add customer</button></div>`)}<section class="surface">${rows.length ? `<div class="table-wrap"><table><thead><tr><th>Name</th><th>Phone</th><th>Email</th><th>GSTIN</th><th>Invoices</th><th>Status</th><th></th></tr></thead><tbody>${rows.map((row) => `<tr data-filter-row><td><b>${esc(row.name)}</b></td><td>${esc(row.phone || "—")}</td><td>${esc(row.email || "—")}</td><td>${esc(row.gstin || "—")}</td><td>${row.invoice_count}</td><td>${status(row.status)}</td><td class="actions"><button class="link-button" data-edit-customer="${esc(row.id)}">Edit</button> <button class="link-button danger-text" data-delete-customer="${esc(row.id)}" data-name="${esc(row.name)}">Delete</button></td></tr>`).join("")}</tbody></table></div>` : `<p class="empty">No local customers yet.</p>`}</section>`;
   document.getElementById("new-customer").addEventListener("click", () => navigate("customer-form"));
+  document.getElementById("excel-template-customers").addEventListener("click", async () => {
+    try {
+      const result = await invoke("excel:download-customers-template");
+      if (!result.canceled) notify(`Customers template saved to ${result.path}`);
+    } catch (error) { notify(error.message, true); }
+  });
+  document.getElementById("excel-export-customers").addEventListener("click", async () => {
+    try {
+      const result = await invoke("excel:export-customers");
+      if (!result.canceled) notify(`Customers exported to ${result.path}`);
+    } catch (error) { notify(error.message, true); }
+  });
+  document.getElementById("excel-import-customers").addEventListener("click", async () => {
+    try {
+      const result = await invoke("excel:import-customers");
+      if (result.canceled) return;
+      let msg = `Excel import finished: ${result.addedCount} added, ${result.updatedCount} updated.`;
+      if (result.errors && result.errors.length) {
+        msg += ` (${result.errors.length} error(s): ${result.errors.slice(0, 3).join("; ")})`;
+      }
+      notify(msg, Boolean(result.errors && result.errors.length && !result.addedCount && !result.updatedCount));
+      await renderCustomers(content);
+    } catch (error) { notify(error.message, true); }
+  });
   content.querySelectorAll("[data-edit-customer]").forEach((button) => button.addEventListener("click", () => navigate("customer-form", rows.find((row) => row.id === button.dataset.editCustomer))));
   content.querySelectorAll("[data-delete-customer]").forEach((button) => button.addEventListener("click", async () => { if (!await confirmAction(`Delete ${button.dataset.name}?`, "Customers used by invoices will be archived so accounting history remains intact.")) return; try { const result=await invoke("billing:delete-customer",{id:button.dataset.deleteCustomer}); notify(result.message); await navigate("customers"); } catch(error){notify(error.message,true);} }));
 }
@@ -336,8 +402,32 @@ async function renderCustomerForm(content, customer = {}) {
 async function renderProducts(content) {
   const rows=await invoke("billing:products");
   const visibleRows=rows.filter(row=>row.status==="ACTIVE"||row.invoice_count===0);
-  content.innerHTML=`${pageHeader("Local inventory","Products","Barcode-ready products, pricing, GST and stock stored in SQLite.",`<button class="button" id="new-product">Add product</button>`)}<section class="surface">${visibleRows.length?`<div class="table-wrap"><table><thead><tr><th>Product</th><th>SKU / Barcode</th><th>Category</th><th>Purchase</th><th>Selling</th><th>GST</th><th>Stock</th><th>Status</th><th></th></tr></thead><tbody>${visibleRows.map(row=>`<tr data-filter-row><td><b>${esc(row.name)}</b><small class="table-sub">${esc(row.hsn_sac?`HSN/SAC ${row.hsn_sac}`:row.description||"")}</small></td><td><span class="mono">${esc(row.sku)}</span><small class="table-sub mono">${esc(row.barcode||"No barcode")}</small></td><td>${esc(row.category||"—")}</td><td>${money(row.purchase_price_in_paise)}</td><td><b>${money(row.price_in_paise)}</b></td><td>${row.tax_rate_basis_points/100}%</td><td>${row.stock_quantity} ${esc(row.unit)}</td><td>${status(row.status)}</td><td class="actions"><button class="link-button" data-edit-product="${esc(row.id)}">Edit</button> <button class="link-button danger-text" data-delete-product="${esc(row.id)}" data-name="${esc(row.name)}">Delete</button></td></tr>`).join("")}</tbody></table></div>`:`<p class="empty">No active products in the catalogue.</p>`}</section>`;
+  content.innerHTML=`${pageHeader("Local inventory","Products","Barcode-ready products, pricing, GST and stock stored in SQLite.",`<div class="invoice-actions"><button class="button secondary" id="excel-template-products">Template</button><button class="button secondary" id="excel-import-products">Import Excel</button><button class="button secondary" id="excel-export-products">Export Excel</button><button class="button" id="new-product">Add product</button></div>`)}<section class="surface">${visibleRows.length?`<div class="table-wrap"><table><thead><tr><th>Product</th><th>SKU / Barcode</th><th>Category</th><th>Purchase</th><th>Selling</th><th>GST</th><th>Stock</th><th>Status</th><th></th></tr></thead><tbody>${visibleRows.map(row=>`<tr data-filter-row><td><b>${esc(row.name)}</b><small class="table-sub">${esc(row.hsn_sac?`HSN/SAC ${row.hsn_sac}`:row.description||"")}</small></td><td><span class="mono">${esc(row.sku)}</span><small class="table-sub mono">${esc(row.barcode||"No barcode")}</small></td><td>${esc(row.category||"—")}</td><td>${money(row.purchase_price_in_paise)}</td><td><b>${money(row.price_in_paise)}</b></td><td>${row.tax_rate_basis_points/100}%</td><td>${row.stock_quantity} ${esc(row.unit)}</td><td>${status(row.status)}</td><td class="actions"><button class="link-button" data-edit-product="${esc(row.id)}">Edit</button> <button class="link-button danger-text" data-delete-product="${esc(row.id)}" data-name="${esc(row.name)}">Delete</button></td></tr>`).join("")}</tbody></table></div>`:`<p class="empty">No active products in the catalogue.</p>`}</section>`;
   document.getElementById("new-product").addEventListener("click",()=>navigate("product-form"));
+  document.getElementById("excel-template-products").addEventListener("click", async () => {
+    try {
+      const result = await invoke("excel:download-products-template");
+      if (!result.canceled) notify(`Products template saved to ${result.path}`);
+    } catch (error) { notify(error.message, true); }
+  });
+  document.getElementById("excel-export-products").addEventListener("click", async () => {
+    try {
+      const result = await invoke("excel:export-products");
+      if (!result.canceled) notify(`Products exported to ${result.path}`);
+    } catch (error) { notify(error.message, true); }
+  });
+  document.getElementById("excel-import-products").addEventListener("click", async () => {
+    try {
+      const result = await invoke("excel:import-products");
+      if (result.canceled) return;
+      let msg = `Excel import finished: ${result.addedCount} added, ${result.updatedCount} updated.`;
+      if (result.errors && result.errors.length) {
+        msg += ` (${result.errors.length} error(s): ${result.errors.slice(0, 3).join("; ")})`;
+      }
+      notify(msg, Boolean(result.errors && result.errors.length && !result.addedCount && !result.updatedCount));
+      await renderProducts(content);
+    } catch (error) { notify(error.message, true); }
+  });
   content.querySelectorAll("[data-edit-product]").forEach(button=>button.addEventListener("click",()=>navigate("product-form",visibleRows.find(row=>row.id===button.dataset.editProduct))));
   content.querySelectorAll("[data-delete-product]").forEach(button=>button.addEventListener("click",async()=>{if(!await confirmAction(`Delete ${button.dataset.name}?`,"If this product has no invoice history it will be permanently deleted. Otherwise it will be removed from the catalogue while historical invoices remain intact."))return;try{const result=await invoke("billing:delete-product",{id:button.dataset.deleteProduct});notify(result.message);await navigate("products");}catch(error){notify(error.message,true);}}));
 }
@@ -426,10 +516,303 @@ async function renderReports(content, range = {}) {
   document.getElementById("report-pdf").addEventListener("click", async () => { try { const result = await invoke("document:save-pdf", { fileName: `sales-report-${from}-to-${to}`, pageSize: "A4", kind: "report" }); if (!result.canceled) notify(`Report PDF saved to ${result.path}`); } catch (error) { notify(error.message, true); } });
 }
 
-async function renderSettings(content){const [business,security,paymentQr,activity]=await Promise.all([invoke("billing:settings"),invoke("security:status"),invoke("payment-qr:get"),invoke("activity:list")]);state.security=security;content.innerHTML=`${pageHeader("This computer","Settings","Business identity, security, payment, invoice and encrypted cloud configuration.")}<form id="settings-form" class="panel form-grid">${field("Business name","companyName",business.company_name,{required:true})}${field("Contact person","contactPerson",business.contact_person)}${field("Email","email",business.email,{type:"email"})}${field("Phone","phone",business.phone)}${field("GSTIN","gstin",business.gstin)}${field("State code","stateCode",business.state_code)}${field("Invoice prefix","invoicePrefix",business.invoice_prefix,{required:true})}${field("Low-stock threshold","lowStockThreshold",business.low_stock_threshold,{type:"number",step:"0.001",min:0})}<label class="field"><span>Thermal receipt width</span><select class="select" name="thermalPaperWidth"><option value="80" ${business.thermal_paper_width!==58?"selected":""}>80 mm</option><option value="58" ${business.thermal_paper_width===58?"selected":""}>58 mm</option></select></label>${field("Address","address",business.address,{textarea:true,full:true})}${field("Default invoice terms","invoiceTerms",business.invoice_terms,{textarea:true,full:true})}${field("Invoice / receipt footer","invoiceFooter",business.invoice_footer,{textarea:true,full:true})}<div class="form-actions field full"><button class="button">Save local settings</button></div></form><div class="settings-grid"><section class="surface settings-card"><p class="eyebrow">Payment</p><h2>UPI payment QR</h2><p class="muted">Show your business QR during UPI checkout and on invoices with an outstanding balance.</p>${paymentQr.configured?`<img class="settings-qr" src="${paymentQr.dataUrl}" alt="Configured payment QR">`:"<p class=\"notice\">No payment QR configured.</p>"}<div class="form-actions"><button class="button" id="pick-payment-qr">${paymentQr.configured?"Replace":"Choose"} QR image</button>${paymentQr.configured?`<button class="button secondary" id="remove-payment-qr">Remove</button>`:""}</div></section><section class="surface settings-card"><p class="eyebrow">Security</p><h2>Application lock</h2><p class="muted">Protect local billing records with a 6-digit PIN and automatic inactivity lock.</p>${security.enabled?`<p class="notice">App lock is enabled · ${security.inactivityMinutes}-minute timeout${security.touchIdAvailable?" · Touch ID available":""}.</p><form id="disable-lock-form">${field("Current PIN","pin","",{type:"password",required:true,full:true})}<div class="form-actions"><button type="button" class="button secondary" id="lock-now">Lock now</button><button class="button danger">Disable lock</button></div></form>`:`<form id="enable-lock-form">${field("New 6-digit PIN","pin","",{type:"password",required:true,full:true})}<label class="field full"><span>Lock after inactivity</span><select class="select" name="inactivityMinutes"><option value="1">1 minute</option><option value="5" selected>5 minutes</option><option value="15">15 minutes</option><option value="30">30 minutes</option></select></label><div class="form-actions"><button class="button">Enable application lock</button></div></form>`}</section></div><section class="surface" style="padding:24px"><p class="eyebrow">Optional online migration</p><h2 style="margin-top:7px">Cloud backup and restore</h2><p class="muted">Local SQLite remains the source of truth. Each explicit backup creates a separate encrypted recovery point.</p><p class="warning">Restoring replaces the current local billing database. A complete SQLite safety copy is created automatically before replacement.</p><div id="cloud-status" class="notice">Cloud status has not been checked.</div><div id="cloud-history"></div><div class="cloud-grid"><article class="cloud-card"><h3>Backup to cloud</h3><p class="muted">Upload a new encrypted version without deleting earlier recovery points.</p><button class="button" id="cloud-backup">Backup local data</button></article><article class="cloud-card"><h3>Restore from cloud</h3><p class="muted">Choose a recovery point above, then restore it after activating this computer.</p><button class="button secondary" id="cloud-restore">Restore selected backup</button></article></div><div class="form-actions"><button class="button secondary" id="validate-license">Validate license online</button></div></section><section class="surface"><div class="surface-head"><h2>Security & activity history</h2><span>Latest ${activity.length}</span></div>${activity.length?`<div class="activity-list">${activity.slice(0,30).map(row=>`<div><span><b>${esc(row.action.replaceAll("_"," "))}</b><small>${esc(row.details||"Local desktop action")}</small></span><time>${date(row.createdAt,true)}</time></div>`).join("")}</div>`:`<p class="empty">No desktop activity recorded yet.</p>`}</section>`;
+async function renderCalculator(content) {
+  content.innerHTML = `${pageHeader("Utility Tools", "GST Calculator", "Offline GST calculator with price breakup, standard tax slabs, and inclusive/exclusive calculation.")}
+  <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(360px, 1fr)); gap: 24px; max-width: 960px;">
+    <section class="card" style="padding: 24px;">
+      <div style="display: flex; gap: 8px; margin-bottom: 20px; background: #f2f4f7; padding: 4px; border-radius: 4px;">
+        <button type="button" id="calc-exclusive" class="button" style="flex: 1; font-size: 12px; padding: 8px;">Exclusive (+ Add GST)</button>
+        <button type="button" id="calc-inclusive" class="button secondary" style="flex: 1; font-size: 12px; padding: 8px;">Inclusive (− Remove GST)</button>
+      </div>
+
+      <label class="field" style="margin-bottom: 16px;">
+        <span id="calc-amount-label">Base Price / Amount (₹)</span>
+        <div style="position: relative; display: flex; align-items: center;">
+          <span style="position: absolute; left: 12px; font-weight: 600; color: #667085;">₹</span>
+          <input type="number" id="calc-amount" class="input" value="1000" min="0" step="any" style="padding-left: 28px; font-size: 16px; font-weight: 600; height: 44px;">
+        </div>
+        <div style="display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap;">
+          <button type="button" class="button secondary" data-add="100" style="padding: 3px 8px; font-size: 11px;">+100</button>
+          <button type="button" class="button secondary" data-add="500" style="padding: 3px 8px; font-size: 11px;">+500</button>
+          <button type="button" class="button secondary" data-add="1000" style="padding: 3px 8px; font-size: 11px;">+1,000</button>
+          <button type="button" class="button secondary" data-add="5000" style="padding: 3px 8px; font-size: 11px;">+5,000</button>
+        </div>
+      </label>
+
+      <label class="field" style="margin-bottom: 16px;">
+        <span>GST Rate Slab (%)</span>
+        <div style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; margin-top: 4px;">
+          <button type="button" class="button secondary" data-rate="0" style="padding: 8px 4px; font-size: 11px;">0%</button>
+          <button type="button" class="button secondary" data-rate="5" style="padding: 8px 4px; font-size: 11px;">5%</button>
+          <button type="button" class="button secondary" data-rate="12" style="padding: 8px 4px; font-size: 11px;">12%</button>
+          <button type="button" class="button" data-rate="18" style="padding: 8px 4px; font-size: 11px;">18%</button>
+          <button type="button" class="button secondary" data-rate="28" style="padding: 8px 4px; font-size: 11px;">28%</button>
+        </div>
+        <div style="display: flex; align-items: center; gap: 8px; margin-top: 8px;">
+          <span style="font-size: 11px; color: #667085;">Custom rate:</span>
+          <input type="number" id="calc-custom-rate" class="input" value="18" min="0" max="100" step="0.1" style="width: 80px; height: 32px; font-size: 12px;">
+          <span style="font-size: 12px; color: #667085;">%</span>
+        </div>
+      </label>
+
+      <div style="margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--line);">
+        <span style="font-size: 12px; font-weight: 600; color: #475467; display: block; margin-bottom: 6px;">Tax Treatment</span>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+          <button type="button" id="calc-intra" class="button" style="text-align: left; padding: 8px 12px; font-size: 11px;">
+            <b>Intra-State</b><br><small style="color: rgba(255,255,255,0.8);">CGST + SGST (50% each)</small>
+          </button>
+          <button type="button" id="calc-inter" class="button secondary" style="text-align: left; padding: 8px 12px; font-size: 11px;">
+            <b>Inter-State</b><br><small class="muted">IGST (Full rate)</small>
+          </button>
+        </div>
+      </div>
+
+      <div style="display: flex; justify-content: flex-end; margin-top: 16px;">
+        <button type="button" id="calc-reset" class="button secondary" style="font-size: 11px;">Reset</button>
+      </div>
+    </section>
+
+    <section class="card" style="padding: 24px; display: flex; flex-direction: column; justify-content: space-between;">
+      <div>
+        <div style="display: flex; justify-content: space-between; align-items: center; padding-bottom: 12px; border-bottom: 1px solid var(--line);">
+          <div>
+            <p class="eyebrow" style="margin: 0; color: var(--brand);">Calculated Result</p>
+            <h3 style="margin: 4px 0 0; font-size: 18px;">Price Breakup</h3>
+          </div>
+          <span id="calc-badge-rate" class="status active" style="font-weight: 700;">18% GST</span>
+        </div>
+
+        <div style="margin-top: 20px; display: flex; flex-direction: column; gap: 12px;">
+          <div style="display: flex; justify-content: space-between; font-size: 13px;">
+            <span class="muted">Base / Net Price</span>
+            <b id="calc-out-base">₹0.00</b>
+          </div>
+          <div id="calc-cgst-row" style="display: flex; justify-content: space-between; font-size: 12px; padding-left: 12px; color: #475467;">
+            <span id="calc-cgst-label">• CGST (9.0%)</span>
+            <span id="calc-out-cgst">₹0.00</span>
+          </div>
+          <div id="calc-sgst-row" style="display: flex; justify-content: space-between; font-size: 12px; padding-left: 12px; color: #475467;">
+            <span id="calc-sgst-label">• SGST (9.0%)</span>
+            <span id="calc-out-sgst">₹0.00</span>
+          </div>
+          <div id="calc-igst-row" style="display: none; justify-content: space-between; font-size: 12px; padding-left: 12px; color: #475467;">
+            <span id="calc-igst-label">• IGST (18%)</span>
+            <span id="calc-out-igst">₹0.00</span>
+          </div>
+          <div style="display: flex; justify-content: space-between; font-size: 13px; padding-top: 8px; border-top: 1px dashed var(--line);">
+            <span style="font-weight: 600;">Total GST Amount</span>
+            <b id="calc-out-gst" style="color: var(--brand);">+ ₹0.00</b>
+          </div>
+
+          <div style="margin-top: 16px; padding: 16px; background: #eef7f5; border: 1px solid #bddbd7; border-radius: 4px;">
+            <div style="display: flex; justify-content: space-between; align-items: baseline;">
+              <div>
+                <small style="text-transform: uppercase; letter-spacing: 0.1em; color: var(--brand); font-weight: 700; font-size: 10px;">Final Payable Amount</small>
+                <h2 id="calc-out-total" style="margin: 4px 0 0; font-size: 24px; color: var(--ink);">₹0.00</h2>
+              </div>
+              <small id="calc-out-mode" class="muted" style="font-size: 11px;">GST Added</small>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div style="margin-top: 24px; padding-top: 16px; border-top: 1px solid var(--line);">
+        <button type="button" id="calc-copy" class="button" style="width: 100%; justify-content: center;">Copy Calculation Breakdown</button>
+      </div>
+    </section>
+  </div>`;
+
+  let isInclusive = false;
+  let taxType = "INTRA";
+  let rate = 18;
+
+  const amountInput = document.getElementById("calc-amount");
+  const customRateInput = document.getElementById("calc-custom-rate");
+  const exclusiveBtn = document.getElementById("calc-exclusive");
+  const inclusiveBtn = document.getElementById("calc-inclusive");
+  const intraBtn = document.getElementById("calc-intra");
+  const interBtn = document.getElementById("calc-inter");
+  const amountLabel = document.getElementById("calc-amount-label");
+
+  function calculate() {
+    const rawAmount = Math.max(0, parseFloat(amountInput.value) || 0);
+    const effectiveRate = Math.max(0, rate || 0);
+
+    let baseAmount = 0;
+    let totalGst = 0;
+    let finalAmount = 0;
+
+    if (isInclusive) {
+      baseAmount = effectiveRate === 0 ? rawAmount : (rawAmount * 100) / (100 + effectiveRate);
+      totalGst = rawAmount - baseAmount;
+      finalAmount = rawAmount;
+    } else {
+      baseAmount = rawAmount;
+      totalGst = (rawAmount * effectiveRate) / 100;
+      finalAmount = baseAmount + totalGst;
+    }
+
+    const halfGst = totalGst / 2;
+
+    document.getElementById("calc-badge-rate").textContent = `${effectiveRate}% GST`;
+    document.getElementById("calc-out-base").textContent = money(Math.round(baseAmount * 100));
+    document.getElementById("calc-out-gst").textContent = `+ ${money(Math.round(totalGst * 100))}`;
+    document.getElementById("calc-out-total").textContent = money(Math.round(finalAmount * 100));
+    document.getElementById("calc-out-mode").textContent = isInclusive ? "GST Included" : "GST Added";
+
+    if (taxType === "INTRA") {
+      document.getElementById("calc-cgst-row").style.display = "flex";
+      document.getElementById("calc-sgst-row").style.display = "flex";
+      document.getElementById("calc-igst-row").style.display = "none";
+      document.getElementById("calc-cgst-label").textContent = `• CGST (${(effectiveRate / 2).toFixed(1)}%)`;
+      document.getElementById("calc-sgst-label").textContent = `• SGST (${(effectiveRate / 2).toFixed(1)}%)`;
+      document.getElementById("calc-out-cgst").textContent = money(Math.round(halfGst * 100));
+      document.getElementById("calc-out-sgst").textContent = money(Math.round(halfGst * 100));
+    } else {
+      document.getElementById("calc-cgst-row").style.display = "none";
+      document.getElementById("calc-sgst-row").style.display = "none";
+      document.getElementById("calc-igst-row").style.display = "flex";
+      document.getElementById("calc-igst-label").textContent = `• IGST (${effectiveRate}%)`;
+      document.getElementById("calc-out-igst").textContent = money(Math.round(totalGst * 100));
+    }
+  }
+
+  exclusiveBtn.addEventListener("click", () => {
+    isInclusive = false;
+    exclusiveBtn.className = "button";
+    inclusiveBtn.className = "button secondary";
+    amountLabel.textContent = "Base Price / Amount (₹)";
+    calculate();
+  });
+
+  inclusiveBtn.addEventListener("click", () => {
+    isInclusive = true;
+    inclusiveBtn.className = "button";
+    exclusiveBtn.className = "button secondary";
+    amountLabel.textContent = "Total Amount (₹ with GST)";
+    calculate();
+  });
+
+  intraBtn.addEventListener("click", () => {
+    taxType = "INTRA";
+    intraBtn.className = "button";
+    intraBtn.querySelector("small").style.color = "rgba(255,255,255,0.8)";
+    interBtn.className = "button secondary";
+    interBtn.querySelector("small").style.color = "";
+    calculate();
+  });
+
+  interBtn.addEventListener("click", () => {
+    taxType = "INTER";
+    interBtn.className = "button";
+    interBtn.querySelector("small").style.color = "rgba(255,255,255,0.8)";
+    intraBtn.className = "button secondary";
+    intraBtn.querySelector("small").style.color = "";
+    calculate();
+  });
+
+  amountInput.addEventListener("input", calculate);
+  customRateInput.addEventListener("input", (e) => {
+    rate = parseFloat(e.target.value) || 0;
+    content.querySelectorAll("[data-rate]").forEach((btn) => {
+      btn.className = parseFloat(btn.dataset.rate) === rate ? "button" : "button secondary";
+    });
+    calculate();
+  });
+
+  content.querySelectorAll("[data-rate]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      rate = parseFloat(btn.dataset.rate);
+      customRateInput.value = rate;
+      content.querySelectorAll("[data-rate]").forEach((b) => {
+        b.className = b === btn ? "button" : "button secondary";
+      });
+      calculate();
+    });
+  });
+
+  content.querySelectorAll("[data-add]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const add = parseFloat(btn.dataset.add) || 0;
+      const current = parseFloat(amountInput.value) || 0;
+      amountInput.value = Math.round(current + add);
+      calculate();
+    });
+  });
+
+  document.getElementById("calc-reset").addEventListener("click", () => {
+    amountInput.value = "1000";
+    rate = 18;
+    customRateInput.value = 18;
+    content.querySelectorAll("[data-rate]").forEach((b) => {
+      b.className = parseFloat(b.dataset.rate) === 18 ? "button" : "button secondary";
+    });
+    isInclusive = false;
+    exclusiveBtn.className = "button";
+    inclusiveBtn.className = "button secondary";
+    amountLabel.textContent = "Base Price / Amount (₹)";
+    taxType = "INTRA";
+    intraBtn.className = "button";
+    intraBtn.querySelector("small").style.color = "rgba(255,255,255,0.8)";
+    interBtn.className = "button secondary";
+    interBtn.querySelector("small").style.color = "";
+    calculate();
+  });
+
+  document.getElementById("calc-copy").addEventListener("click", () => {
+    const rawAmount = Math.max(0, parseFloat(amountInput.value) || 0);
+    const effectiveRate = Math.max(0, rate || 0);
+    const baseAmount = isInclusive ? (effectiveRate === 0 ? rawAmount : (rawAmount * 100) / (100 + effectiveRate)) : rawAmount;
+    const totalGst = isInclusive ? (rawAmount - baseAmount) : ((rawAmount * effectiveRate) / 100);
+    const finalAmount = isInclusive ? rawAmount : (baseAmount + totalGst);
+
+    const text = [
+      `GST Calculation (${isInclusive ? "GST Inclusive" : "GST Exclusive"}):`,
+      `Base / Net Amount: ₹${baseAmount.toFixed(2)}`,
+      `GST Rate: ${effectiveRate}%`,
+      taxType === "INTRA"
+        ? `CGST (${(effectiveRate / 2).toFixed(1)}%): ₹${(totalGst / 2).toFixed(2)}\nSGST (${(effectiveRate / 2).toFixed(1)}%): ₹${(totalGst / 2).toFixed(2)}`
+        : `IGST (${effectiveRate}%): ₹${totalGst.toFixed(2)}`,
+      `Total GST: ₹${totalGst.toFixed(2)}`,
+      `Total Final Amount: ₹${finalAmount.toFixed(2)}`,
+    ].join("\n");
+
+    navigator.clipboard.writeText(text).then(() => {
+      notify("Calculation breakdown copied to clipboard.");
+    }).catch(() => {});
+  });
+
+  calculate();
+}
+
+async function renderSettings(content){const [business,security,paymentQr,activity]=await Promise.all([invoke("billing:settings"),invoke("security:status"),invoke("payment-qr:get"),invoke("activity:list")]);state.security=security;content.innerHTML=`${pageHeader("This computer","Settings","Business identity, security, payment, invoice and encrypted cloud configuration.")}<form id="settings-form" class="panel form-grid">${field("Business name","companyName",business.company_name,{required:true})}${field("Contact person","contactPerson",business.contact_person)}${field("Email","email",business.email,{type:"email"})}${field("Phone","phone",business.phone)}${field("GSTIN","gstin",business.gstin)}${field("State code","stateCode",business.state_code)}${field("Invoice prefix","invoicePrefix",business.invoice_prefix,{required:true})}${field("Low-stock threshold","lowStockThreshold",business.low_stock_threshold,{type:"number",step:"0.001",min:0})}<label class="field"><span>Thermal receipt width</span><select class="select" name="thermalPaperWidth"><option value="80" ${business.thermal_paper_width!==58?"selected":""}>80 mm</option><option value="58" ${business.thermal_paper_width===58?"selected":""}>58 mm</option></select></label>${field("Address","address",business.address,{textarea:true,full:true})}${field("Default invoice terms","invoiceTerms",business.invoice_terms,{textarea:true,full:true})}${field("Invoice / receipt footer","invoiceFooter",business.invoice_footer,{textarea:true,full:true})}<div class="form-actions field full"><button class="button">Save local settings</button></div></form><div class="settings-grid"><section class="surface settings-card"><p class="eyebrow">Software</p><h2>Software updates</h2><p class="muted">Check for updates to AV Smartbilling Desktop.</p><div id="update-status" class="notice">AV Smartbilling Desktop v0.3.0 is installed.</div><div class="form-actions"><button class="button secondary" id="check-update-btn">Check for updates</button></div></section><section class="surface settings-card"><p class="eyebrow">Payment</p><h2>UPI payment QR</h2><p class="muted">Show your business QR during UPI checkout and on invoices with an outstanding balance.</p>${paymentQr.configured?`<img class="settings-qr" src="${paymentQr.dataUrl}" alt="Configured payment QR">`:"<p class=\"notice\">No payment QR configured.</p>"}<div class="form-actions"><button class="button" id="pick-payment-qr">${paymentQr.configured?"Replace":"Choose"} QR image</button>${paymentQr.configured?`<button class="button secondary" id="remove-payment-qr">Remove</button>`:""}</div></section><section class="surface settings-card"><p class="eyebrow">Security</p><h2>Application lock</h2><p class="muted">Protect local billing records with a 6-digit PIN and automatic inactivity lock.</p>${security.enabled?`<p class="notice">App lock is enabled · ${security.inactivityMinutes}-minute timeout${security.touchIdAvailable?" · Touch ID available":""}.</p><form id="disable-lock-form">${field("Current PIN","pin","",{type:"password",required:true,full:true})}<div class="form-actions"><button type="button" class="button secondary" id="lock-now">Lock now</button><button class="button danger">Disable lock</button></div></form>`:`<form id="enable-lock-form">${field("New 6-digit PIN","pin","",{type:"password",required:true,full:true})}<label class="field full"><span>Lock after inactivity</span><select class="select" name="inactivityMinutes"><option value="1">1 minute</option><option value="5" selected>5 minutes</option><option value="15">15 minutes</option><option value="30">30 minutes</option></select></label><div class="form-actions"><button class="button">Enable application lock</button></div></form>`}</section></div><section class="surface" style="padding:24px"><p class="eyebrow">Optional online migration</p><h2 style="margin-top:7px">Cloud backup and restore</h2><p class="muted">Local SQLite remains the source of truth. Each explicit backup creates a separate encrypted recovery point.</p><p class="warning">Restoring replaces the current local billing database. A complete SQLite safety copy is created automatically before replacement.</p><div id="cloud-status" class="notice">Cloud status has not been checked.</div><div id="cloud-history"></div><div class="cloud-grid"><article class="cloud-card"><h3>Backup to cloud</h3><p class="muted">Upload a new encrypted version without deleting earlier recovery points.</p><button class="button" id="cloud-backup">Backup local data</button></article><article class="cloud-card"><h3>Restore from cloud</h3><p class="muted">Choose a recovery point above, then restore it after activating this computer.</p><button class="button secondary" id="cloud-restore">Restore selected backup</button></article></div><div class="form-actions"><button class="button secondary" id="validate-license">Validate license online</button></div></section><section class="surface"><div class="surface-head"><h2>Security & activity history</h2><span>Latest ${activity.length}</span></div>${activity.length?`<div class="activity-list">${activity.slice(0,30).map(row=>`<div><span><b>${esc(row.action.replaceAll("_"," "))}</b><small>${esc(row.details||"Local desktop action")}</small></span><time>${date(row.createdAt,true)}</time></div>`).join("")}</div>`:`<p class="empty">No desktop activity recorded yet.</p>`}</section>`;
   document.getElementById("settings-form").addEventListener("submit",async event=>{event.preventDefault();try{const result=await invoke("billing:save-settings",Object.fromEntries(new FormData(event.currentTarget)));notify(result.message);state.business=await invoke("billing:settings");}catch(error){notify(error.message,true);}});
   document.getElementById("pick-payment-qr").addEventListener("click",async()=>{try{const result=await invoke("payment-qr:pick");if(!result.canceled){notify("Payment QR updated.");await renderSettings(content);}}catch(error){notify(error.message,true);}});
   document.getElementById("remove-payment-qr")?.addEventListener("click",async()=>{if(!await confirmAction("Remove payment QR?","The QR will no longer appear in UPI checkout or invoices."))return;try{await invoke("payment-qr:remove");notify("Payment QR removed.");await renderSettings(content);}catch(error){notify(error.message,true);}});
+  document.getElementById("check-update-btn")?.addEventListener("click", async (event) => {
+    event.currentTarget.disabled = true;
+    event.currentTarget.textContent = "Checking…";
+    const statusBox = document.getElementById("update-status");
+    try {
+      const res = await invoke("app:check-update");
+      if (res.hasUpdate) {
+        statusBox.className = "notice";
+        statusBox.innerHTML = `<b>Update available: v${esc(res.latestVersion)}</b> (installed: v${esc(res.currentVersion)}).<br><small>${esc(res.releaseNotes || "A newer desktop version is available.")}</small>${res.updateUrl ? `<br><a href="${esc(res.updateUrl)}" target="_blank" style="color:#004d40;font-weight:600;margin-top:6px;display:inline-block">Download installer</a>` : ""}`;
+        notify(`New version v${res.latestVersion} is available!`);
+      } else {
+        statusBox.className = "notice";
+        statusBox.textContent = `You are on the latest version (v${res.currentVersion}).`;
+        notify("You are using the latest version.");
+      }
+    } catch (err) {
+      statusBox.className = "notice error";
+      statusBox.textContent = `Update check failed: ${err.message}`;
+      notify(err.message, true);
+    } finally {
+      event.currentTarget.disabled = false;
+      event.currentTarget.textContent = "Check for updates";
+    }
+  });
   document.querySelectorAll('#enable-lock-form [name="pin"],#disable-lock-form [name="pin"]').forEach(input=>{input.inputMode="numeric";input.maxLength=6;input.pattern="[0-9]{6}";});
   document.getElementById("enable-lock-form")?.addEventListener("submit",async event=>{event.preventDefault();try{state.security=await invoke("security:configure",Object.fromEntries(new FormData(event.currentTarget)));state.unlocked=true;notify("Application lock enabled.");resetInactivityTimer();await renderSettings(content);}catch(error){notify(error.message,true);}});
   document.getElementById("disable-lock-form")?.addEventListener("submit",async event=>{event.preventDefault();try{state.security=await invoke("security:disable",Object.fromEntries(new FormData(event.currentTarget)));clearTimeout(state.inactivityTimer);notify("Application lock disabled.");await renderSettings(content);}catch(error){notify(error.message,true);}});

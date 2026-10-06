@@ -9,9 +9,14 @@ import '../cloud_backup_service.dart';
 import '../ui_helpers.dart';
 
 class CloudBackupScreen extends StatefulWidget {
-  const CloudBackupScreen({super.key, required this.controller});
+  const CloudBackupScreen({
+    super.key,
+    required this.controller,
+    this.drawer,
+  });
 
   final AppController controller;
+  final Widget? drawer;
 
   @override
   State<CloudBackupScreen> createState() => _CloudBackupScreenState();
@@ -132,7 +137,17 @@ class _CloudBackupScreenState extends State<CloudBackupScreen> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
+    drawer: widget.drawer,
     appBar: AppBar(
+      leading: widget.drawer != null
+          ? Builder(
+              builder: (ctx) => IconButton(
+                icon: const Icon(Icons.menu),
+                tooltip: 'Open menu',
+                onPressed: () => Scaffold.of(ctx).openDrawer(),
+              ),
+            )
+          : null,
       title: const Text('Cloud Backup'),
       actions: [
         IconButton(

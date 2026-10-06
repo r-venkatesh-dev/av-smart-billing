@@ -38,7 +38,7 @@ export function SessionStatus({ mode, user }: { mode: "admin" | "billing"; user?
       </div>
       <dl className="mt-4 space-y-3 text-xs">
         <div className="flex gap-3"><UserRound size={16} className="mt-0.5 shrink-0 text-[#057c73]" /><div className="min-w-0"><dt className="text-[9px] font-bold uppercase tracking-[.1em] text-[#8b918e]">Signed in as</dt><dd className="mt-0.5 truncate font-semibold text-[#26272a]">{user?.fullName || "Active user"}</dd><dd className="text-[10px] text-[#7b817e]">{roleLabel}</dd></div></div>
-        <div className="flex gap-3"><KeyRound size={16} className="mt-0.5 shrink-0 text-[#057c73]" /><div><dt className="text-[9px] font-bold uppercase tracking-[.1em] text-[#8b918e]">Access method</dt><dd className="mt-0.5 font-semibold text-[#26272a]">{licensed ? "Signed license activation" : "Supabase administrator login"}</dd><dd className="text-[10px] text-[#7b817e]">{mode === "admin" ? "Control Center" : "Billing Desk"}</dd></div></div>
+        <div className="flex gap-3"><KeyRound size={16} className="mt-0.5 shrink-0 text-[#057c73]" /><div><dt className="text-[9px] font-bold uppercase tracking-[.1em] text-[#8b918e]">Access method</dt><dd className="mt-0.5 font-semibold text-[#26272a]">{licensed ? "Signed license activation" : (mode === "admin" ? "Supabase administrator login" : "Workspace session")}</dd><dd className="text-[10px] text-[#7b817e]">{mode === "admin" ? "Control Center" : "Billing Desk"}</dd></div></div>
       </dl>
       <p className="mt-4 border-t border-[#edf0ee] pt-3 text-[10px] leading-4 text-[#7b817e]">This icon shows the current login and access type. It is not a notification bell.</p>
     </section> : null}

@@ -6,9 +6,14 @@ import '../security_service.dart';
 import '../ui_helpers.dart';
 
 class SecurityScreen extends StatefulWidget {
-  const SecurityScreen({super.key, required this.controller});
+  const SecurityScreen({
+    super.key,
+    required this.controller,
+    this.drawer,
+  });
 
   final AppController controller;
+  final Widget? drawer;
 
   @override
   State<SecurityScreen> createState() => _SecurityScreenState();
@@ -113,7 +118,19 @@ class _SecurityScreenState extends State<SecurityScreen> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: const Text('App Lock & Security')),
+    drawer: widget.drawer,
+    appBar: AppBar(
+      leading: widget.drawer != null
+          ? Builder(
+              builder: (ctx) => IconButton(
+                icon: const Icon(Icons.menu),
+                tooltip: 'Open menu',
+                onPressed: () => Scaffold.of(ctx).openDrawer(),
+              ),
+            )
+          : null,
+      title: const Text('App Lock & Security'),
+    ),
     body: loading
         ? const LoadingView()
         : ListView(

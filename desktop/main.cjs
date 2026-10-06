@@ -1,5 +1,5 @@
-/* eslint-disable @typescript-eslint/no-require-imports -- Electron entrypoint uses CommonJS without changing the Next.js module mode. */
-const { app, BrowserWindow, Menu, dialog, ipcMain, safeStorage, session, shell, systemPreferences } = require("electron");
+/* eslint-disable @typescript-eslint/no-require-imports -- Electron main process CommonJS module */
+const { app, BrowserWindow, Menu, Notification, dialog, ipcMain, safeStorage, session, shell, systemPreferences } = require("electron");
 const { randomUUID } = require("node:crypto");
 const fs = require("node:fs");
 const os = require("node:os");
@@ -8,6 +8,7 @@ const { createBillingDatabase } = require("./database.cjs");
 const { createCloudClient } = require("./cloud.cjs");
 const { createLicenseStore } = require("./license.cjs");
 const { createDesktopPreferences } = require("./preferences.cjs");
+const excel = require("./excel.cjs");
 
 const PRODUCT_NAME = "AV Smartbilling";
 let mainWindow = null;
@@ -148,6 +149,122 @@ function registerIpc() {
     preferences.setPaymentQrPath(null);
     return { message: "Payment QR removed." };
   });
+
+  expose("excel:download-products-template", async () => {
+    const result = await dialog.showSaveDialog(mainWindow, {
+      title: "Save Products Excel Template",
+      defaultPath: "av-smartbilling-products-template.xlsx",
+      filters: [{ name: "Excel workbook", extensions: ["xlsx"] }],
+    });
+    if (result.canceled || !result.filePath) return { canceled: true };
+    const buffer = await excel.generateProductsTemplate();
+    fs.writeFileSync(result.filePath, buffer);
+    return { canceled: false, path: result.filePath };
+  });
+
+  expose("excel:export-products", async () => {
+    const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, "");
+    const result = await dialog.showSaveDialog(mainWindow, {
+      title: "Export Products to Excel",
+      defaultPath: `av-smartbilling-products-${dateStr}.xlsx`,
+      filters: [{ name: "Excel workbook", extensions: ["xlsx"] }],
+    });
+    if (result.canceled || !result.filePath) return { canceled: true };
+    const products = database.listProducts();
+    const buffer = await excel.generateProductsExport(products);
+    fs.writeFileSync(result.filePath, buffer);
+    preferences.record("EXCEL_PRODUCTS_EXPORTED", `${products.length} products`);
+    return { canceled: false, path: result.filePath };
+  });
+
+  expose("excel:import-products", async () => {
+    const selected = await dialog.showOpenDialog(mainWindow, {
+      title: "Select Products Excel File",
+      properties: ["openFile"],
+      filters: [{ name: "Excel files", extensions: ["xlsx"] }],
+    });
+    if (selected.canceled || !selected.filePaths[0]) return { canceled: true };
+    const filePath = selected.filePaths[0];
+    const items = await excel.parseProductsFile(filePath);
+    if (!items.length) throw new Error("No data rows found in the selected Excel file.");
+    const result = database.bulkImportProducts(items);
+    preferences.record("EXCEL_PRODUCTS_IMPORTED", `${result.addedCount} added, ${result.updatedCount} updated`);
+    return { canceled: false, ...result };
+  });
+
+  expose("excel:download-customers-template", async () => {
+    const result = await dialog.showSaveDialog(mainWindow, {
+      title: "Save Customers Excel Template",
+      defaultPath: "av-smartbilling-customers-template.xlsx",
+      filters: [{ name: "Excel workbook", extensions: ["xlsx"] }],
+    });
+    if (result.canceled || !result.filePath) return { canceled: true };
+    const buffer = await excel.generateCustomersTemplate();
+    fs.writeFileSync(result.filePath, buffer);
+    return { canceled: false, path: result.filePath };
+  });
+
+  expose("excel:export-customers", async () => {
+    const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, "");
+    const result = await dialog.showSaveDialog(mainWindow, {
+      title: "Export Customers to Excel",
+      defaultPath: `av-smartbilling-customers-${dateStr}.xlsx`,
+      filters: [{ name: "Excel workbook", extensions: ["xlsx"] }],
+    });
+    if (result.canceled || !result.filePath) return { canceled: true };
+    const customers = database.listCustomers();
+    const buffer = await excel.generateCustomersExport(customers);
+    fs.writeFileSync(result.filePath, buffer);
+    preferences.record("EXCEL_CUSTOMERS_EXPORTED", `${customers.length} customers`);
+    return { canceled: false, path: result.filePath };
+  });
+
+  expose("excel:import-customers", async () => {
+    const selected = await dialog.showOpenDialog(mainWindow, {
+      title: "Select Customers Excel File",
+      properties: ["openFile"],
+      filters: [{ name: "Excel files", extensions: ["xlsx"] }],
+    });
+    if (selected.canceled || !selected.filePaths[0]) return { canceled: true };
+    const filePath = selected.filePaths[0];
+    const items = await excel.parseCustomersFile(filePath);
+    if (!items.length) throw new Error("No data rows found in the selected Excel file.");
+    const result = database.bulkImportCustomers(items);
+    preferences.record("EXCEL_CUSTOMERS_IMPORTED", `${result.addedCount} added, ${result.updatedCount} updated`);
+    return { canceled: false, ...result };
+  });
+
+  expose("app:check-update", async () => {
+    const currentVersion = app.getVersion();
+    const platform = process.platform === "darwin" ? "mac" : "windows";
+    try {
+      const response = await fetch(`${readApplicationUrl()}/api/mobile/version?platform=${platform}`);
+      if (!response.ok) throw new Error("Could not reach update server.");
+      const data = await response.json();
+      const hasUpdate = Boolean(data.latestVersion && data.latestVersion !== currentVersion);
+      return {
+        currentVersion,
+        latestVersion: data.latestVersion || currentVersion,
+        hasUpdate,
+        releaseNotes: data.releaseNotes || "",
+        updateUrl: data.updateUrl || "",
+      };
+    } catch (err) {
+      return {
+        currentVersion,
+        latestVersion: currentVersion,
+        hasUpdate: false,
+        error: err.message,
+      };
+    }
+  }, { licenseRequired: false });
+
+  expose("app:notify", (input) => {
+    if (Notification.isSupported()) {
+      new Notification({ title: String(input.title || PRODUCT_NAME), body: String(input.body || "") }).show();
+    }
+    return { ok: true };
+  }, { licenseRequired: false });
 
   expose("file:save-export", async (input) => {
     const format = ["csv", "xls"].includes(input.format) ? input.format : null;

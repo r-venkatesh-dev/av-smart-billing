@@ -328,6 +328,181 @@ function createBillingDatabase(databasePath) {
     return { mode: "deleted", message: "Product permanently deleted." };
   });
 
+  const bulkImportProducts = db.transaction((rows) => {
+    let addedCount = 0;
+    let updatedCount = 0;
+    const errors = [];
+    const existingProducts = db.prepare("select * from products").all();
+
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i];
+      const rowNum = row.rowNumber || (i + 2);
+      const name = clean(row.name);
+      if (!name || name.length < 2) {
+        errors.push(`Row ${rowNum}: Product name is required (min 2 characters).`);
+        continue;
+      }
+      const price = number(row.price);
+      if (isNaN(price) || price < 0) {
+        errors.push(`Row ${rowNum} ("${name}"): Valid selling price is required.`);
+        continue;
+      }
+      const stock = number(row.stockQuantity);
+      if (isNaN(stock) || stock < 0) {
+        errors.push(`Row ${rowNum} ("${name}"): Valid stock quantity is required.`);
+        continue;
+      }
+      const taxRate = number(row.taxRate, 0);
+      if (taxRate < 0 || taxRate > 100) {
+        errors.push(`Row ${rowNum} ("${name}"): GST Rate must be between 0% and 100%.`);
+        continue;
+      }
+      const discount = number(row.discount, 0);
+      if (discount < 0 || discount > 100) {
+        errors.push(`Row ${rowNum} ("${name}"): Discount must be between 0% and 100%.`);
+        continue;
+      }
+
+      const rawSku = clean(row.sku)?.toUpperCase() || "";
+      const rawBarcode = clean(row.barcode) || null;
+      const category = clean(row.category) || "";
+      const hsnSac = clean(row.hsnSac)?.toUpperCase() || "";
+      const unit = clean(row.unit) || "pcs";
+      const purchasePrice = Math.round(number(row.purchasePrice, 0) * 100);
+      const priceInPaise = Math.round(price * 100);
+      const taxInBasisPoints = Math.round(taxRate * 100);
+      const threshold = row.lowStockThreshold ? number(row.lowStockThreshold) : null;
+
+      let existing = null;
+      if (rawSku) {
+        existing = existingProducts.find((p) => p.sku && p.sku.toUpperCase() === rawSku);
+      }
+      if (!existing && rawBarcode) {
+        existing = existingProducts.find((p) => p.barcode && p.barcode === rawBarcode);
+      }
+      if (!existing) {
+        existing = existingProducts.find((p) => p.name.trim().toLowerCase() === name.toLowerCase());
+      }
+
+      const timestamp = now();
+      const id = existing ? existing.id : randomUUID();
+      const sku = rawSku || (existing ? existing.sku : `AV-${Date.now().toString().slice(-6)}-${addedCount + 1}`);
+
+      const values = {
+        id,
+        name,
+        sku,
+        barcode: rawBarcode || (existing ? existing.barcode : null),
+        category: category || (existing ? existing.category : null),
+        hsn_sac: hsnSac || (existing ? existing.hsn_sac : null),
+        description: clean(row.description) || (existing ? existing.description : ""),
+        unit,
+        purchase_price_in_paise: purchasePrice,
+        price_in_paise: priceInPaise,
+        tax_rate_basis_points: taxInBasisPoints,
+        stock_quantity: stock,
+        low_stock_threshold: threshold !== null ? threshold : (existing ? existing.low_stock_threshold : null),
+        status: "ACTIVE",
+        created_at: existing ? existing.created_at : timestamp,
+        updated_at: timestamp,
+      };
+
+      try {
+        db.prepare(`insert into products(id,name,sku,barcode,category,hsn_sac,description,unit,purchase_price_in_paise,price_in_paise,tax_rate_basis_points,stock_quantity,low_stock_threshold,status,created_at,updated_at)
+          values(@id,@name,@sku,@barcode,@category,@hsn_sac,@description,@unit,@purchase_price_in_paise,@price_in_paise,@tax_rate_basis_points,@stock_quantity,@low_stock_threshold,@status,@created_at,@updated_at)
+          on conflict(id) do update set name=excluded.name,sku=excluded.sku,barcode=excluded.barcode,category=excluded.category,hsn_sac=excluded.hsn_sac,description=excluded.description,unit=excluded.unit,purchase_price_in_paise=excluded.purchase_price_in_paise,price_in_paise=excluded.price_in_paise,tax_rate_basis_points=excluded.tax_rate_basis_points,stock_quantity=excluded.stock_quantity,low_stock_threshold=excluded.low_stock_threshold,status=excluded.status,updated_at=excluded.updated_at`).run(values);
+
+        const change = stock - number(existing?.stock_quantity);
+        if (change !== 0) {
+          db.prepare(`insert into stock_movements(id,product_id,movement_type,quantity_change,quantity_after,reference_type,reference_id,notes,created_at) values(?,?,?,?,?,?,?,?,?)`)
+            .run(randomUUID(), id, existing ? "ADJUSTMENT" : "OPENING", change, stock, "EXCEL_IMPORT", id, "Imported from Excel", timestamp);
+        }
+
+        if (existing) {
+          updatedCount++;
+        } else {
+          addedCount++;
+          existingProducts.push(values);
+        }
+      } catch (err) {
+        errors.push(`Row ${rowNum} ("${name}"): ${err.message}`);
+      }
+    }
+
+    return { totalRows: rows.length, addedCount, updatedCount, errors };
+  });
+
+  const bulkImportCustomers = db.transaction((rows) => {
+    let addedCount = 0;
+    let updatedCount = 0;
+    const errors = [];
+    const existingCustomers = db.prepare("select * from customers").all();
+
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i];
+      const rowNum = row.rowNumber || (i + 2);
+      const name = clean(row.name);
+      if (!name || name.length < 2) {
+        errors.push(`Row ${rowNum}: Customer name is required (min 2 characters).`);
+        continue;
+      }
+      const rawPhone = clean(row.phone)?.replace(/\D/g, "") || "";
+      let phone = null;
+      if (rawPhone) {
+        let digits = rawPhone;
+        if (digits.length === 11 && digits.startsWith("0")) digits = digits.slice(1);
+        if (digits.length === 12 && digits.startsWith("91")) digits = digits.slice(2);
+        if (digits.length !== 10) {
+          errors.push(`Row ${rowNum} ("${name}"): Mobile number must be 10 digits.`);
+          continue;
+        }
+        phone = digits;
+      }
+      const gstin = clean(row.gstin)?.toUpperCase() || null;
+      const email = clean(row.email) || null;
+      const address = clean(row.address) || "";
+
+      let existing = null;
+      if (phone) {
+        existing = existingCustomers.find((c) => c.phone === phone);
+      }
+      if (!existing) {
+        existing = existingCustomers.find((c) => c.name.trim().toLowerCase() === name.toLowerCase());
+      }
+
+      const timestamp = now();
+      const id = existing ? existing.id : randomUUID();
+      const values = {
+        id,
+        name,
+        email: email || (existing ? existing.email : null),
+        phone: phone || (existing ? existing.phone : null),
+        address: address || (existing ? existing.address : ""),
+        gstin: gstin || (existing ? existing.gstin : null),
+        status: "ACTIVE",
+        created_at: existing ? existing.created_at : timestamp,
+        updated_at: timestamp,
+      };
+
+      try {
+        db.prepare(`insert into customers(id,name,email,phone,address,gstin,status,created_at,updated_at)
+          values(@id,@name,@email,@phone,@address,@gstin,@status,@created_at,@updated_at)
+          on conflict(id) do update set name=excluded.name,email=excluded.email,phone=excluded.phone,address=excluded.address,gstin=excluded.gstin,status=excluded.status,updated_at=excluded.updated_at`).run(values);
+
+        if (existing) {
+          updatedCount++;
+        } else {
+          addedCount++;
+          existingCustomers.push(values);
+        }
+      } catch (err) {
+        errors.push(`Row ${rowNum} ("${name}"): ${err.message}`);
+      }
+    }
+
+    return { totalRows: rows.length, addedCount, updatedCount, errors };
+  });
+
   const createInvoice = db.transaction((input) => {
     const business = getBusiness();
     const timestamp = now();
@@ -559,9 +734,11 @@ function createBillingDatabase(databasePath) {
     listCustomers: () => listCustomers.all(),
     saveCustomer,
     deleteCustomer,
+    bulkImportCustomers,
     listProducts: () => listProducts.all(),
     saveProduct,
     deleteProduct,
+    bulkImportProducts,
     createInvoice,
     createPosSale,
     holdBill,

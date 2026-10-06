@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState, type ReactNode } from "react";
-import { Boxes, Building2, CircleDollarSign, FileBarChart, FileText, KeyRound, LayoutDashboard, LogOut, Menu, MonitorSmartphone, Package, ScanBarcode, Settings, Users, WalletCards, Warehouse, X } from "lucide-react";
+import { Boxes, Building2, Calculator, CircleDollarSign, FileBarChart, FileText, KeyRound, LayoutDashboard, LogOut, Menu, MonitorSmartphone, Package, ScanBarcode, Settings, Users, WalletCards, Warehouse, X } from "lucide-react";
 import { BrandLogo } from "@/components/brand-logo";
 import { logout } from "@/app/login/actions";
 import { GlobalSearch } from "@/components/global-search";
@@ -31,6 +31,7 @@ const billingNav: NavItem[] = [
   { label: "Invoices", href: "/billing/invoices", icon: FileText },
   { label: "Payments", href: "/billing/payments", icon: CircleDollarSign },
   { label: "Reports", href: "/billing/reports", icon: FileBarChart },
+  { label: "GST Calculator", href: "/billing/calculator", icon: Calculator },
   { label: "Settings", href: "/billing/settings", icon: Settings },
 ];
 
@@ -61,8 +62,36 @@ export function AppShell({ mode, children, user, allowReportsExports = true }: {
           })}
         </nav>
         <div className="border-t border-white/10 p-4">
-          {user?.role !== "LICENSED" ? <Link href={mode === "admin" ? "/billing/dashboard" : "/admin/dashboard"} className="focus-ring flex items-center gap-3 rounded-xl bg-white/[.06] p-3 text-xs font-semibold text-[#d6d8e8] transition hover:bg-white/10"><Boxes size={18} /><span>Switch to {mode === "admin" ? "Billing Desk" : "Control Center"}</span></Link> : <Link href="/activate" className="focus-ring flex items-center gap-3 bg-white/[.06] p-3 text-xs font-semibold text-[#d6d8e8]"><KeyRound size={18} /><span>License activation</span></Link>}
-          {user && user.role !== "LICENSED" ? <form action={logout} className="mt-3"><button className="focus-ring flex w-full items-center gap-3 rounded-xl px-1 py-2 text-left hover:bg-white/[.05]" title="Sign out"><div className="grid size-9 place-items-center rounded-full bg-[#343a60] text-xs font-bold">{user.fullName.split(/\s+/).slice(0, 2).map((part) => part[0]).join("").toUpperCase()}</div><div className="min-w-0 flex-1"><p className="truncate text-xs font-semibold">{user.fullName}</p><p className="truncate text-[11px] capitalize text-[#858aa9]">{user.role.toLowerCase()}</p></div><LogOut aria-hidden="true" size={14} className="text-[#858aa9]" /></button></form> : user ? <div className="mt-3 flex items-center gap-3 px-1 py-2"><div className="grid size-9 place-items-center rounded-full bg-[#343a60] text-xs font-bold">{user.fullName.split(/\s+/).slice(0, 2).map((part) => part[0]).join("").toUpperCase()}</div><div className="min-w-0"><p className="truncate text-xs font-semibold">{user.fullName}</p><p className="text-[11px] text-[#858aa9]">Licensed customer</p></div></div> : null}
+          {mode === "admin" ? (
+            <Link href="/billing/dashboard" className="focus-ring flex items-center gap-3 rounded-xl bg-white/[.06] p-3 text-xs font-semibold text-[#d6d8e8] transition hover:bg-white/10">
+              <Boxes size={18} />
+              <span>Switch to Billing Desk</span>
+            </Link>
+          ) : null}
+          {user && user.role !== "LICENSED" ? (
+            <form action={logout} className="mt-3">
+              <button className="focus-ring flex w-full items-center gap-3 rounded-xl px-1 py-2 text-left hover:bg-white/[.05]" title="Sign out">
+                <div className="grid size-9 place-items-center rounded-full bg-[#343a60] text-xs font-bold">
+                  {user.fullName.split(/\s+/).slice(0, 2).map((part) => part[0]).join("").toUpperCase()}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-xs font-semibold">{user.fullName}</p>
+                  <p className="truncate text-[11px] capitalize text-[#858aa9]">{user.role.toLowerCase()}</p>
+                </div>
+                <LogOut aria-hidden="true" size={14} className="text-[#858aa9]" />
+              </button>
+            </form>
+          ) : user ? (
+            <div className="mt-3 flex items-center gap-3 px-1 py-2">
+              <div className="grid size-9 place-items-center rounded-full bg-[#343a60] text-xs font-bold">
+                {user.fullName.split(/\s+/).slice(0, 2).map((part) => part[0]).join("").toUpperCase()}
+              </div>
+              <div className="min-w-0">
+                <p className="truncate text-xs font-semibold">{user.fullName}</p>
+                <p className="text-[11px] text-[#858aa9]">Licensed customer</p>
+              </div>
+            </div>
+          ) : null}
         </div>
       </aside>
       <div className="app-shell-body lg:pl-[264px]">

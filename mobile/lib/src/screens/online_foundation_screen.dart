@@ -14,17 +14,22 @@ class OnlineFoundationScreen extends StatelessWidget {
   Widget build(BuildContext context) => Scaffold(
     drawer: drawer,
     appBar: AppBar(
-      leading: IconButton(
-        icon: const Icon(Icons.menu),
-        tooltip: 'Open menu',
-        onPressed: () {
-          final root = context.findRootAncestorStateOfType<ScaffoldState>();
-          if (root != null && root.hasDrawer) {
-            root.openDrawer();
-          } else if (drawer != null) {
-            Scaffold.maybeOf(context)?.openDrawer();
-          }
-        },
+      leading: Builder(
+        builder: (ctx) => IconButton(
+          icon: const Icon(Icons.menu),
+          tooltip: 'Open menu',
+          onPressed: () {
+            final scaffold = Scaffold.of(ctx);
+            if (scaffold.hasDrawer) {
+              scaffold.openDrawer();
+            } else {
+              final root = ctx.findRootAncestorStateOfType<ScaffoldState>();
+              if (root != null && root.hasDrawer) {
+                root.openDrawer();
+              }
+            }
+          },
+        ),
       ),
       title: Text(title),
     ),

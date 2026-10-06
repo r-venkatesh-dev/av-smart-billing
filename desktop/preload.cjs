@@ -15,6 +15,9 @@ const channels = new Set([
   "cloud:status", "cloud:backup", "cloud:restore",
   "security:status", "security:configure", "security:verify", "security:disable", "security:biometric",
   "payment-qr:pick", "payment-qr:get", "payment-qr:remove",
+  "excel:download-products-template", "excel:export-products", "excel:import-products",
+  "excel:download-customers-template", "excel:export-customers", "excel:import-customers",
+  "app:check-update", "app:notify",
   "file:save-export", "document:save-pdf", "external:whatsapp", "external:email",
   "activity:list",
 ]);

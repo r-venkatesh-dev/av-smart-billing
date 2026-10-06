@@ -7,5 +7,9 @@ void main() {
     expect(formatQuantity(1.25), '1.25');
     expect(stockLabel(97, '10'), 'Stock: 97 items');
     expect(stockLabel(2.5, 'kg'), 'Stock: 2.5 kg');
+    expect(stockLabel(10, '1pcs'), 'Stock: 10 pcs');
+    expect(stockLabel(10, '1 pcs'), 'Stock: 10 pcs');
+    expect(stockLabel(10, '1'), 'Stock: 10 pcs');
+    expect(stockLabel(1, 'pcs'), 'Stock: 1 pc');
   });
 }

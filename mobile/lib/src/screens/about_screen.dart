@@ -4,7 +4,9 @@ import '../app_update_service.dart';
 import '../ui_helpers.dart';
 
 class AboutScreen extends StatefulWidget {
-  const AboutScreen({super.key});
+  const AboutScreen({super.key, this.drawer});
+
+  final Widget? drawer;
 
   @override
   State<AboutScreen> createState() => _AboutScreenState();
@@ -39,7 +41,8 @@ class _AboutScreenState extends State<AboutScreen> {
       if (result != null && result.hasUpdate) {
         await _updateService.showUpdateDialog(context, result);
       } else {
-        final version = result?.currentVersion ?? _versionInfo?.versionName ?? '1.0.0';
+        final version =
+            result?.currentVersion ?? _versionInfo?.versionName ?? '1.0.0';
         showMessage(
           context,
           "You're already using the latest version (v$version).",
@@ -58,7 +61,19 @@ class _AboutScreenState extends State<AboutScreen> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: const Text('About App')),
+    drawer: widget.drawer,
+    appBar: AppBar(
+      leading: widget.drawer != null
+          ? Builder(
+              builder: (ctx) => IconButton(
+                icon: const Icon(Icons.menu),
+                tooltip: 'Open menu',
+                onPressed: () => Scaffold.of(ctx).openDrawer(),
+              ),
+            )
+          : null,
+      title: const Text('About App'),
+    ),
     body: ListView(
       padding: const EdgeInsets.all(24),
       children: [
@@ -87,7 +102,10 @@ class _AboutScreenState extends State<AboutScreen> {
               ? 'Version ${_versionInfo!.versionName} (${_versionInfo!.buildNumber})'
               : 'Version 1.0.0',
           textAlign: TextAlign.center,
-          style: const TextStyle(color: Colors.grey, fontWeight: FontWeight.w500),
+          style: const TextStyle(
+            color: Colors.grey,
+            fontWeight: FontWeight.w500,
+          ),
         ),
         const SizedBox(height: 14),
         Center(

@@ -19,9 +19,9 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
     const platform = (searchParams.get("platform") || "android").toLowerCase();
 
-    if (platform !== "android" && platform !== "ios") {
+    if (!["android", "ios", "desktop", "windows", "mac"].includes(platform)) {
       return NextResponse.json(
-        { ok: false, message: "Invalid platform. Must be 'android' or 'ios'." },
+        { ok: false, message: "Invalid platform. Must be 'android', 'ios', 'desktop', 'windows' or 'mac'." },
         { status: 400 },
       );
     }
@@ -37,11 +37,16 @@ export async function GET(request: Request) {
       .maybeSingle();
 
     if (error || !data) {
-      // Graceful fallback to default configuration if table isn't migrated yet
+      const isDesktop = ["desktop", "windows", "mac"].includes(platform);
       return NextResponse.json(
         {
-          ...DEFAULT_FALLBACK,
+          ok: true,
           platform,
+          latestVersion: isDesktop ? publicDownloads.desktopVersion : DEFAULT_FALLBACK.latestVersion,
+          latestBuildNumber: isDesktop ? 1 : DEFAULT_FALLBACK.latestBuildNumber,
+          minRequiredBuild: 1,
+          releaseNotes: isDesktop ? "AV Smartbilling Desktop offline release with POS, inventory, reports, and backup." : DEFAULT_FALLBACK.releaseNotes,
+          updateUrl: isDesktop ? (platform === "mac" ? publicDownloads.macArm64Url : publicDownloads.windowsUrl) : DEFAULT_FALLBACK.updateUrl,
         },
         {
           headers: {
@@ -67,7 +72,7 @@ export async function GET(request: Request) {
         },
       },
     );
-  } catch (err) {
+  } catch {
     return NextResponse.json(
       DEFAULT_FALLBACK,
       {

@@ -13,6 +13,7 @@ import 'about_screen.dart';
 import 'cloud_backup_screen.dart';
 import 'customers_screen.dart';
 import 'dashboard_screen.dart';
+import 'gst_calculator_screen.dart';
 import 'invoices_screen.dart';
 import 'online_foundation_screen.dart';
 import 'pos_screen.dart';
@@ -179,25 +180,40 @@ class _HomeShellState extends State<HomeShell> {
     selectedIndex: selectedIndex,
     onSelect: (value) {
       Navigator.pop(context);
-      _selectPage(value);
+      if (selectedIndex != value) {
+        Navigator.of(context).popUntil((route) => route.isFirst);
+        _selectPage(value);
+      }
     },
     onCustomers: () {
       Navigator.pop(context);
-      _openPage(CustomersScreen(controller: widget.controller));
+      if (selectedIndex == 4) return;
+      Navigator.of(context).popUntil((route) => route.isFirst);
+      _openPage(CustomersScreen(
+        controller: widget.controller,
+        drawer: _drawer(4),
+      ));
     },
     onSettings: () {
       Navigator.pop(context);
+      if (selectedIndex == 7) return;
+      Navigator.of(context).popUntil((route) => route.isFirst);
       _openPage(
         widget.controller.isOnline
             ? OnlineFoundationScreen(
                 title: 'Online Business Settings',
-                drawer: _drawer(-1),
+                drawer: _drawer(7),
               )
-            : SettingsScreen(controller: widget.controller),
+            : SettingsScreen(
+                controller: widget.controller,
+                drawer: _drawer(7),
+              ),
       );
     },
     onReports: () {
       Navigator.pop(context);
+      if (selectedIndex == 5) return;
+      Navigator.of(context).popUntil((route) => route.isFirst);
       if (widget.controller.session?.allowReportsExports != true) {
         showDialog<void>(
           context: context,
@@ -221,13 +237,18 @@ class _HomeShellState extends State<HomeShell> {
         widget.controller.isOnline
             ? OnlineFoundationScreen(
                 title: 'Online Reports & Exports',
-                drawer: _drawer(-1),
+                drawer: _drawer(5),
               )
-            : ReportsScreen(controller: widget.controller),
+            : ReportsScreen(
+                controller: widget.controller,
+                drawer: _drawer(5),
+              ),
       );
     },
     onCloudBackup: () {
       Navigator.pop(context);
+      if (selectedIndex == 6) return;
+      Navigator.of(context).popUntil((route) => route.isFirst);
       if (widget.controller.session?.allowCloudBackup != true) {
         showDialog<void>(
           context: context,
@@ -247,15 +268,31 @@ class _HomeShellState extends State<HomeShell> {
         );
         return;
       }
-      _openPage(CloudBackupScreen(controller: widget.controller));
+      _openPage(CloudBackupScreen(
+        controller: widget.controller,
+        drawer: _drawer(6),
+      ));
     },
     onSecurity: () {
       Navigator.pop(context);
-      _openPage(SecurityScreen(controller: widget.controller));
+      if (selectedIndex == 8) return;
+      Navigator.of(context).popUntil((route) => route.isFirst);
+      _openPage(SecurityScreen(
+        controller: widget.controller,
+        drawer: _drawer(8),
+      ));
+    },
+    onCalculator: () {
+      Navigator.pop(context);
+      if (selectedIndex == 10) return;
+      Navigator.of(context).popUntil((route) => route.isFirst);
+      _openPage(GstCalculatorScreen(drawer: _drawer(10)));
     },
     onAbout: () {
       Navigator.pop(context);
-      _openPage(const AboutScreen());
+      if (selectedIndex == 9) return;
+      Navigator.of(context).popUntil((route) => route.isFirst);
+      _openPage(AboutScreen(drawer: _drawer(9)));
     },
     onModeChanged: _changeMode,
     switchingMode: switchingMode,
@@ -471,6 +508,7 @@ class _AppDrawer extends StatelessWidget {
     required this.onReports,
     required this.onCloudBackup,
     required this.onSecurity,
+    required this.onCalculator,
     required this.onAbout,
     required this.onModeChanged,
     required this.switchingMode,
@@ -484,6 +522,7 @@ class _AppDrawer extends StatelessWidget {
   final VoidCallback onReports;
   final VoidCallback onCloudBackup;
   final VoidCallback onSecurity;
+  final VoidCallback onCalculator;
   final VoidCallback onAbout;
   final ValueChanged<BillingMode> onModeChanged;
   final bool switchingMode;
@@ -549,73 +588,89 @@ class _AppDrawer extends StatelessWidget {
                               letterSpacing: -0.4,
                             ),
                           ),
-                          const SizedBox(height: 3),
-                          Tooltip(
-                            message:
-                                controller.session?.allowOnlineBilling == true
-                                ? 'Tap to switch billing mode'
-                                : 'Current billing mode',
-                            child: Material(
-                              color: Colors.white.withValues(alpha: 0.17),
-                              borderRadius: BorderRadius.circular(20),
-                              child: InkWell(
+                          const SizedBox(height: 5),
+                          if (controller.session?.allowOnlineBilling == true)
+                            Container(
+                              decoration: BoxDecoration(
+                                color: Colors.black.withValues(alpha: 0.22),
                                 borderRadius: BorderRadius.circular(20),
-                                onTap:
-                                    switchingMode ||
-                                        controller
-                                                .session
-                                                ?.allowOnlineBilling !=
-                                            true
-                                    ? null
-                                    : () => onModeChanged(
-                                        controller.isOnline
-                                            ? BillingMode.offline
-                                            : BillingMode.online,
-                                      ),
-                                child: Padding(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 11,
-                                    vertical: 4,
+                                border: Border.all(
+                                  color: Colors.white.withValues(alpha: 0.16),
+                                  width: 0.8,
+                                ),
+                              ),
+                              padding: const EdgeInsets.all(2),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  _ModeSegment(
+                                    label: 'Online',
+                                    icon: Icons.cloud_outlined,
+                                    activeIcon: Icons.cloud_rounded,
+                                    isSelected: controller.isOnline,
+                                    isLoading:
+                                        switchingMode && !controller.isOnline,
+                                    onTap:
+                                        switchingMode || controller.isOnline
+                                            ? null
+                                            : () => onModeChanged(
+                                                BillingMode.online,
+                                              ),
                                   ),
-                                  child: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      if (switchingMode)
-                                        const SizedBox.square(
-                                          dimension: 10,
-                                          child: CircularProgressIndicator(
-                                            color: Colors.white,
-                                            strokeWidth: 2,
-                                          ),
-                                        )
-                                      else
-                                        Container(
-                                          width: 9,
-                                          height: 9,
-                                          decoration: BoxDecoration(
-                                            color: controller.isOnline
-                                                ? const Color(0xff20e369)
-                                                : Colors.white70,
-                                            shape: BoxShape.circle,
-                                          ),
-                                        ),
-                                      const SizedBox(width: 8),
-                                      Text(
-                                        controller.isOnline
-                                            ? 'Online Mode'
-                                            : 'Offline Mode',
-                                        style: const TextStyle(
-                                          color: Colors.white,
-                                          fontSize: 12,
-                                          fontWeight: FontWeight.w600,
-                                        ),
-                                      ),
-                                    ],
+                                  _ModeSegment(
+                                    label: 'Offline',
+                                    icon: Icons.flash_on_outlined,
+                                    activeIcon: Icons.flash_on_rounded,
+                                    isSelected: !controller.isOnline,
+                                    isLoading:
+                                        switchingMode && controller.isOnline,
+                                    onTap:
+                                        switchingMode || !controller.isOnline
+                                            ? null
+                                            : () => onModeChanged(
+                                                BillingMode.offline,
+                                              ),
                                   ),
+                                ],
+                              ),
+                            )
+                          else
+                            Tooltip(
+                              message:
+                                  'Online billing is not included in current plan',
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 4,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: Colors.white.withValues(alpha: 0.17),
+                                  borderRadius: BorderRadius.circular(20),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Container(
+                                      width: 7,
+                                      height: 7,
+                                      decoration: const BoxDecoration(
+                                        color: Color(0xff20e369),
+                                        shape: BoxShape.circle,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 6),
+                                    const Text(
+                                      'Offline Mode',
+                                      style: TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 11.5,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ),
                             ),
-                          ),
                         ],
                       ),
                     ),
@@ -746,6 +801,7 @@ class _AppDrawer extends StatelessWidget {
                 _DrawerItem(
                   icon: Icons.people_outline,
                   label: 'Customers',
+                  selected: selectedIndex == 4,
                   onTap: onCustomers,
                 ),
                 const Padding(
@@ -757,21 +813,31 @@ class _AppDrawer extends StatelessWidget {
                   _DrawerItem(
                     icon: Icons.analytics_outlined,
                     label: 'Reports & Exports',
+                    selected: selectedIndex == 5,
                     onTap: onReports,
                   ),
                 _DrawerItem(
                   icon: Icons.cloud_upload_outlined,
                   label: 'Cloud Backup',
+                  selected: selectedIndex == 6,
                   onTap: onCloudBackup,
+                ),
+                _DrawerItem(
+                  icon: Icons.calculate_outlined,
+                  label: 'GST Calculator',
+                  selected: selectedIndex == 10,
+                  onTap: onCalculator,
                 ),
                 _DrawerItem(
                   icon: Icons.settings_outlined,
                   label: 'Business Settings',
+                  selected: selectedIndex == 7,
                   onTap: onSettings,
                 ),
                 _DrawerItem(
                   icon: Icons.lock_outline,
                   label: 'App Lock & Security',
+                  selected: selectedIndex == 8,
                   onTap: onSecurity,
                 ),
                 const Padding(
@@ -781,6 +847,7 @@ class _AppDrawer extends StatelessWidget {
                 _DrawerItem(
                   icon: Icons.info_outline,
                   label: 'About App',
+                  selected: selectedIndex == 9,
                   onTap: onAbout,
                 ),
               ],
@@ -908,3 +975,88 @@ class _DrawerItem extends StatelessWidget {
     ),
   );
 }
+
+class _ModeSegment extends StatelessWidget {
+  const _ModeSegment({
+    required this.label,
+    required this.icon,
+    required this.activeIcon,
+    required this.isSelected,
+    required this.isLoading,
+    required this.onTap,
+  });
+
+  final String label;
+  final IconData icon;
+  final IconData activeIcon;
+  final bool isSelected;
+  final bool isLoading;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(16),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          curve: Curves.easeInOut,
+          padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3.5),
+          decoration: BoxDecoration(
+            color: isSelected
+                ? Colors.white.withValues(alpha: 0.25)
+                : Colors.transparent,
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (isLoading)
+                const Padding(
+                  padding: EdgeInsets.only(right: 5),
+                  child: SizedBox.square(
+                    dimension: 9,
+                    child: CircularProgressIndicator(
+                      color: Colors.white,
+                      strokeWidth: 1.5,
+                    ),
+                  ),
+                )
+              else if (isSelected) ...[
+                Container(
+                  width: 6,
+                  height: 6,
+                  decoration: const BoxDecoration(
+                    color: Color(0xff20e369),
+                    shape: BoxShape.circle,
+                  ),
+                ),
+                const SizedBox(width: 5),
+              ] else ...[
+                Icon(
+                  icon,
+                  size: 11,
+                  color: Colors.white.withValues(alpha: 0.65),
+                ),
+                const SizedBox(width: 4),
+              ],
+              Text(
+                label,
+                style: TextStyle(
+                  color: isSelected
+                      ? Colors.white
+                      : Colors.white.withValues(alpha: 0.7),
+                  fontSize: 11.5,
+                  fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
