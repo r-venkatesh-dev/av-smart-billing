@@ -341,6 +341,7 @@ class _HomeShellState extends State<HomeShell> {
             ],
           ),
           floatingActionButton: FloatingActionButton(
+            heroTag: null,
             backgroundColor: const Color(0xff057c73),
             foregroundColor: Colors.white,
             elevation: 4,

@@ -669,6 +669,7 @@ class _CustomersScreenState extends State<CustomersScreen> {
         ],
       ),
       floatingActionButton: FloatingActionButton.extended(
+        heroTag: null,
         onPressed: () => _edit(),
         tooltip: 'Add a new customer',
         backgroundColor: const Color(0xff004d40),

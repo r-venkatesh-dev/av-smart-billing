@@ -575,6 +575,7 @@ class _ProductsScreenState extends State<ProductsScreen> {
         ],
       ),
       floatingActionButton: FloatingActionButton.extended(
+        heroTag: null,
         onPressed: () => _edit(),
         tooltip: 'Add a new product',
         backgroundColor: const Color(0xff004d40),
