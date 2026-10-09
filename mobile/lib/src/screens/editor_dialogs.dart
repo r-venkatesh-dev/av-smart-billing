@@ -94,8 +94,9 @@ class _ProductEditorDialogState extends State<ProductEditorDialog> {
   String _cleanUnit(String value) {
     var clean = value.trim();
     final match = RegExp(r'^\d+[\s\-_]*(.*)$').firstMatch(clean);
-    if (match != null && match.group(1)!.trim().isNotEmpty) {
-      clean = match.group(1)!.trim();
+    final groupVal = match?.group(1);
+    if (groupVal != null && groupVal.trim().isNotEmpty) {
+      clean = groupVal.trim();
     }
     final lower = clean.toLowerCase();
     if (lower == '1' ||

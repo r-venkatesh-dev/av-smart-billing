@@ -223,14 +223,31 @@ class ExcelImportExportService {
   // ===========================================================================
 
   Future<ImportResult> importProducts(Uint8List bytes, AppController controller) async {
-    final excel = Excel.decodeBytes(bytes);
+    final Excel excel;
+    try {
+      excel = Excel.decodeBytes(bytes);
+    } catch (e) {
+      throw Exception(
+        'Could not read this Excel file. Please ensure it is a valid .xlsx file or try opening and re-saving it before importing.',
+      );
+    }
+
     if (excel.tables.isEmpty) {
       throw Exception('The selected Excel file contains no worksheets.');
     }
 
-    final sheet = excel.tables.values.first;
-    if (sheet.rows.isEmpty) {
-      throw Exception('The Excel sheet is empty.');
+    Sheet? sheet;
+    for (final entry in excel.tables.entries) {
+      final name = entry.key.toLowerCase();
+      if ((name.contains('product') || name.contains('item')) && entry.value.rows.isNotEmpty) {
+        sheet = entry.value;
+        break;
+      }
+    }
+    sheet ??= excel.tables.values.where((s) => s.rows.isNotEmpty).firstOrNull;
+
+    if (sheet == null || sheet.rows.isEmpty) {
+      throw Exception('The Excel sheet contains no rows.');
     }
 
     // Find header row
@@ -287,51 +304,52 @@ class ExcelImportExportService {
       processedDataRows++;
       final rowNum = r + 1;
 
-      final name = headerMap.containsKey('name') ? _cellString(row[headerMap['name']!]) : '';
-      if (name.length < 2) {
-        errors.add('Row $rowNum: Product name is required (min 2 characters).');
-        continue;
-      }
-
-      final priceVal = headerMap.containsKey('price') ? _cellDouble(row[headerMap['price']!]) : null;
-      if (priceVal == null || priceVal < 0) {
-        errors.add('Row $rowNum ("$name"): Valid price is required (0 or greater).');
-        continue;
-      }
-
-      final stockVal = headerMap.containsKey('stock') ? _cellDouble(row[headerMap['stock']!]) : null;
-      if (stockVal == null || stockVal < 0) {
-        errors.add('Row $rowNum ("$name"): Valid stock quantity is required (0 or greater).');
-        continue;
-      }
-
-      final rawUnit = headerMap.containsKey('unit') ? _cellString(row[headerMap['unit']!]) : '';
-      final cleanUnit = readableUnit(rawUnit.isEmpty ? 'pcs' : rawUnit, quantity: 1);
-
-      final rawSku = headerMap.containsKey('sku') ? _cellString(row[headerMap['sku']!]) : '';
-      final rawBarcode = headerMap.containsKey('barcode') ? _cellString(row[headerMap['barcode']!]) : '';
-      final taxRateVal = headerMap.containsKey('tax') ? (_cellDouble(row[headerMap['tax']!]) ?? 0.0) : 0.0;
-      final discountVal = headerMap.containsKey('discount') ? (_cellDouble(row[headerMap['discount']!]) ?? 0.0) : 0.0;
-
-      if (taxRateVal < 0 || taxRateVal > 100) {
-        errors.add('Row $rowNum ("$name"): GST Rate must be between 0% and 100%.');
-        continue;
-      }
-      if (discountVal < 0 || discountVal > 100) {
-        errors.add('Row $rowNum ("$name"): Discount must be between 0% and 100%.');
-        continue;
-      }
-
-      Product? existing;
-      if (rawSku.isNotEmpty) {
-        existing = existingProducts.where((p) => p.sku.toLowerCase() == rawSku.toLowerCase()).firstOrNull;
-      }
-      if (existing == null && rawBarcode.isNotEmpty) {
-        existing = existingProducts.where((p) => p.barcode.isNotEmpty && p.barcode == rawBarcode).firstOrNull;
-      }
-      existing ??= existingProducts.where((p) => p.name.trim().toLowerCase() == name.toLowerCase()).firstOrNull;
-
       try {
+        final name = _cellString(_cellAt(row, headerMap['name']));
+        if (name.length < 2) {
+          errors.add('Row $rowNum: Product name is required (min 2 characters).');
+          continue;
+        }
+
+        final priceVal = _cellDouble(_cellAt(row, headerMap['price']));
+        if (priceVal == null || priceVal < 0) {
+          errors.add('Row $rowNum ("$name"): Valid price is required (0 or greater).');
+          continue;
+        }
+
+        final rawStock = _cellDouble(_cellAt(row, headerMap['stock']));
+        final stockVal = rawStock ?? 0.0;
+        if (stockVal < 0) {
+          errors.add('Row $rowNum ("$name"): Valid stock quantity is required (0 or greater).');
+          continue;
+        }
+
+        final rawUnit = _cellString(_cellAt(row, headerMap['unit']));
+        final cleanUnit = readableUnit(rawUnit.isEmpty ? 'pcs' : rawUnit, quantity: 1);
+
+        final rawSku = _cellString(_cellAt(row, headerMap['sku']));
+        final rawBarcode = _cellString(_cellAt(row, headerMap['barcode']));
+        final taxRateVal = _cellDouble(_cellAt(row, headerMap['tax'])) ?? 0.0;
+        final discountVal = _cellDouble(_cellAt(row, headerMap['discount'])) ?? 0.0;
+
+        if (taxRateVal < 0 || taxRateVal > 100) {
+          errors.add('Row $rowNum ("$name"): GST Rate must be between 0% and 100%.');
+          continue;
+        }
+        if (discountVal < 0 || discountVal > 100) {
+          errors.add('Row $rowNum ("$name"): Discount must be between 0% and 100%.');
+          continue;
+        }
+
+        Product? existing;
+        if (rawSku.isNotEmpty) {
+          existing = existingProducts.where((p) => p.sku.toLowerCase() == rawSku.toLowerCase()).firstOrNull;
+        }
+        if (existing == null && rawBarcode.isNotEmpty) {
+          existing = existingProducts.where((p) => p.barcode.isNotEmpty && p.barcode == rawBarcode).firstOrNull;
+        }
+        existing ??= existingProducts.where((p) => p.name.trim().toLowerCase() == name.toLowerCase()).firstOrNull;
+
         if (existing != null) {
           await controller.saveProduct(
             id: existing.id,
@@ -363,7 +381,7 @@ class ExcelImportExportService {
           addedCount++;
         }
       } catch (e) {
-        errors.add('Row $rowNum ("$name"): ${errorMessage(e)}');
+        errors.add('Row $rowNum: ${errorMessage(e)}');
       }
     }
 
@@ -382,14 +400,31 @@ class ExcelImportExportService {
   // ===========================================================================
 
   Future<ImportResult> importCustomers(Uint8List bytes, AppController controller) async {
-    final excel = Excel.decodeBytes(bytes);
+    final Excel excel;
+    try {
+      excel = Excel.decodeBytes(bytes);
+    } catch (e) {
+      throw Exception(
+        'Could not read this Excel file. Please ensure it is a valid .xlsx file or try opening and re-saving it before importing.',
+      );
+    }
+
     if (excel.tables.isEmpty) {
       throw Exception('The selected Excel file contains no worksheets.');
     }
 
-    final sheet = excel.tables.values.first;
-    if (sheet.rows.isEmpty) {
-      throw Exception('The Excel sheet is empty.');
+    Sheet? sheet;
+    for (final entry in excel.tables.entries) {
+      final name = entry.key.toLowerCase();
+      if ((name.contains('customer') || name.contains('client')) && entry.value.rows.isNotEmpty) {
+        sheet = entry.value;
+        break;
+      }
+    }
+    sheet ??= excel.tables.values.where((s) => s.rows.isNotEmpty).firstOrNull;
+
+    if (sheet == null || sheet.rows.isEmpty) {
+      throw Exception('The Excel sheet contains no rows.');
     }
 
     int headerRowIndex = -1;
@@ -437,29 +472,29 @@ class ExcelImportExportService {
       processedDataRows++;
       final rowNum = r + 1;
 
-      final name = headerMap.containsKey('name') ? _cellString(row[headerMap['name']!]) : '';
-      if (name.length < 2) {
-        errors.add('Row $rowNum: Customer name is required (min 2 characters).');
-        continue;
-      }
-
-      final rawPhone = headerMap.containsKey('phone') ? _cellString(row[headerMap['phone']!]) : '';
-      final phoneError = validateOptionalMobileNumber(rawPhone);
-      if (phoneError != null) {
-        errors.add('Row $rowNum ("$name"): $phoneError');
-        continue;
-      }
-
-      final rawGstin = headerMap.containsKey('gstin') ? _cellString(row[headerMap['gstin']!]).toUpperCase() : '';
-      final rawAddress = headerMap.containsKey('address') ? _cellString(row[headerMap['address']!]) : '';
-
-      Customer? existing;
-      if (rawPhone.isNotEmpty) {
-        existing = existingCustomers.where((c) => c.phone.isNotEmpty && c.phone == rawPhone).firstOrNull;
-      }
-      existing ??= existingCustomers.where((c) => c.name.trim().toLowerCase() == name.toLowerCase()).firstOrNull;
-
       try {
+        final name = _cellString(_cellAt(row, headerMap['name']));
+        if (name.length < 2) {
+          errors.add('Row $rowNum: Customer name is required (min 2 characters).');
+          continue;
+        }
+
+        final rawPhone = _cellString(_cellAt(row, headerMap['phone']));
+        final phoneError = validateOptionalMobileNumber(rawPhone);
+        if (phoneError != null) {
+          errors.add('Row $rowNum ("$name"): $phoneError');
+          continue;
+        }
+
+        final rawGstin = _cellString(_cellAt(row, headerMap['gstin'])).toUpperCase();
+        final rawAddress = _cellString(_cellAt(row, headerMap['address']));
+
+        Customer? existing;
+        if (rawPhone.isNotEmpty) {
+          existing = existingCustomers.where((c) => c.phone.isNotEmpty && c.phone == rawPhone).firstOrNull;
+        }
+        existing ??= existingCustomers.where((c) => c.name.trim().toLowerCase() == name.toLowerCase()).firstOrNull;
+
         if (existing != null) {
           await controller.saveCustomer(
             id: existing.id,
@@ -480,7 +515,7 @@ class ExcelImportExportService {
           addedCount++;
         }
       } catch (e) {
-        errors.add('Row $rowNum ("$name"): ${errorMessage(e)}');
+        errors.add('Row $rowNum: ${errorMessage(e)}');
       }
     }
 
@@ -496,35 +531,67 @@ class ExcelImportExportService {
   // HELPERS
   // ===========================================================================
 
+  Data? _cellAt(List<Data?> row, int? colIndex) {
+    if (colIndex == null || colIndex < 0 || colIndex >= row.length) return null;
+    return row[colIndex];
+  }
+
   String _cellString(Data? cell) {
-    if (cell == null || cell.value == null) return '';
-    final v = cell.value;
-    if (v is TextCellValue) return v.value.text?.trim() ?? v.value.toString().trim();
-    if (v is IntCellValue) return v.value.toString();
-    if (v is DoubleCellValue) {
-      if (v.value == v.value.roundToDouble()) {
-        return v.value.toInt().toString();
+    if (cell == null) return '';
+    try {
+      final v = cell.value;
+      if (v == null) return '';
+      if (v is TextCellValue) {
+        return v.value.text?.trim() ?? v.value.toString().trim();
       }
-      return v.value.toString();
+      if (v is IntCellValue) return v.value.toString();
+      if (v is DoubleCellValue) {
+        if (v.value == v.value.roundToDouble()) {
+          return v.value.toInt().toString();
+        }
+        return v.value.toString();
+      }
+      if (v is DateCellValue) {
+        try {
+          return v.asDateTimeLocal().toIso8601String();
+        } catch (_) {
+          return v.toString().trim();
+        }
+      }
+      if (v is DateTimeCellValue) {
+        try {
+          return v.asDateTimeLocal().toIso8601String();
+        } catch (_) {
+          return v.toString().trim();
+        }
+      }
+      if (v is BoolCellValue) return v.value ? 'true' : 'false';
+      if (v is FormulaCellValue) return v.formula.trim();
+      return v.toString().trim();
+    } catch (_) {
+      return '';
     }
-    if (v is DateCellValue) return v.asDateTimeLocal().toIso8601String();
-    if (v is DateTimeCellValue) return v.asDateTimeLocal().toIso8601String();
-    if (v is BoolCellValue) return v.value ? 'true' : 'false';
-    return v.toString().trim();
   }
 
   double? _cellDouble(Data? cell) {
-    if (cell == null || cell.value == null) return null;
-    final v = cell.value;
-    if (v is DoubleCellValue) return v.value;
-    if (v is IntCellValue) return v.value.toDouble();
-    final s = _cellString(cell)
-        .replaceAll(',', '')
-        .replaceAll('Rs', '')
-        .replaceAll('₹', '')
-        .replaceAll('%', '')
-        .trim();
-    return double.tryParse(s);
+    if (cell == null) return null;
+    try {
+      final v = cell.value;
+      if (v == null) return null;
+      if (v is DoubleCellValue) return v.value;
+      if (v is IntCellValue) return v.value.toDouble();
+      final s = _cellString(cell)
+          .replaceAll(',', '')
+          .replaceAll('Rs.', '')
+          .replaceAll('Rs', '')
+          .replaceAll('₹', '')
+          .replaceAll('%', '')
+          .replaceAll('/', '')
+          .trim();
+      return double.tryParse(s);
+    } catch (_) {
+      return null;
+    }
   }
 
   Future<void> _share(Uint8List bytes, String fileName, String title, String text) async {

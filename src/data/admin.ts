@@ -1,6 +1,7 @@
 import "server-only";
 
 import { requireAdminRole } from "@/lib/auth/authorization";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 function assertQuery<T>(data: T | null, error: { message: string } | null): T {
@@ -263,4 +264,28 @@ export async function getAdminDashboard() {
 
   const newCustomersThisMonth = (customerGrowth.data ?? []).filter((row) => row.created_at >= monthStart).length;
   return { customerCount, activeLicenseCount, activeDeviceCount, expiringCount, newCustomersThisMonth, recentLicenses, months };
+}
+
+export async function listAppVersions() {
+  await requireAdminRole();
+  const supabase = createAdminClient();
+  const { data, error } = await supabase
+    .from("app_versions")
+    .select("id, platform, latest_version, latest_build_number, min_required_build, release_notes, update_url, is_active, created_at, updated_at")
+    .order("platform")
+    .order("latest_build_number", { ascending: false });
+
+  if (error) throw new Error(`Supabase query failed: ${error.message}`);
+  return (data ?? []).map((row) => ({
+    id: row.id,
+    platform: (row.platform || "android") as "android" | "ios",
+    latestVersion: row.latest_version,
+    latestBuildNumber: Number(row.latest_build_number),
+    minRequiredBuild: Number(row.min_required_build),
+    releaseNotes: row.release_notes ?? "",
+    updateUrl: row.update_url,
+    isActive: Boolean(row.is_active),
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  }));
 }

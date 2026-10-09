@@ -124,7 +124,7 @@ class AppController extends ChangeNotifier {
     notifyListeners();
   }
 
-  bool get isOnline => billingMode == BillingMode.online;
+  bool get isOnline => billingMode == BillingMode.online && session != null;
 
   void _scheduleLicenseExpiry() {
     _licenseExpiryTimer?.cancel();
@@ -266,7 +266,9 @@ class AppController extends ChangeNotifier {
     session = await licenses.activate(key);
     billingMode = BillingMode.offline;
     await billingModes.save(billingMode);
-    await database.initializeBusinessName(session!.customerName);
+    if (session != null) {
+      await database.initializeBusinessName(session!.customerName);
+    }
     _scheduleLicenseExpiry();
     notifyListeners();
   }

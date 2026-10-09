@@ -14,8 +14,9 @@ String readableUnit(String value, {num quantity = 2}) {
   var unit = value.trim();
   // Strip leading count/digits like "1pcs", "1 pcs", "1-pcs", "1 piece", "1 unit"
   final leadingCountMatch = RegExp(r'^\d+[\s\-_]*(.*)$').firstMatch(unit);
-  if (leadingCountMatch != null && leadingCountMatch.group(1)!.trim().isNotEmpty) {
-    unit = leadingCountMatch.group(1)!.trim();
+  final matchedGroup = leadingCountMatch?.group(1);
+  if (matchedGroup != null && matchedGroup.trim().isNotEmpty) {
+    unit = matchedGroup.trim();
   }
 
   final lower = unit.toLowerCase();

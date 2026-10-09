@@ -195,3 +195,86 @@ export async function deactivateLicenseDevice(licenseId: string, deviceId: strin
   revalidatePath("/admin/devices");
   return { ok: true, message: `${before.data.device_name} was deactivated. The customer can now activate a replacement device.` };
 }
+
+export interface DeleteResult {
+  ok: boolean;
+  message: string;
+}
+
+export async function deleteLicense(id: string): Promise<DeleteResult> {
+  const actor = await requireAdminRole(["OWNER", "ADMIN"]);
+  const admin = createAdminClient();
+  const license = await admin
+    .from("licenses")
+    .select("id, license_key_hint, customer_id, plan_id, status")
+    .eq("id", id)
+    .maybeSingle();
+
+  if (license.error) return { ok: false, message: license.error.message };
+  if (!license.data) return { ok: false, message: "License not found." };
+
+  await admin.from("billing_businesses").update({ license_id: null }).eq("license_id", id);
+  await admin.from("subscription_purchases").update({ license_id: null }).eq("license_id", id);
+  await admin.from("subscription_orders").update({ license_id: null }).eq("license_id", id);
+
+  const removed = await admin.from("licenses").delete().eq("id", id);
+  if (removed.error) return { ok: false, message: removed.error.message };
+
+  const supabase = await createSupabaseServerClient();
+  await supabase.from("audit_logs").insert({
+    actor_id: actor.id,
+    action: "LICENSE_DELETED",
+    entity_type: "license",
+    entity_id: id,
+    before_data: license.data,
+    after_data: null,
+  });
+
+  revalidatePath("/admin/licenses");
+  revalidatePath(`/admin/licenses/${id}`);
+  revalidatePath("/admin/dashboard");
+  return { ok: true, message: `License ${license.data.license_key_hint} was permanently deleted.` };
+}
+
+export async function deletePlan(id: string): Promise<DeleteResult> {
+  const actor = await requireAdminRole(["OWNER", "ADMIN"]);
+  const admin = createAdminClient();
+  const plan = await admin.from("plans").select("id, name, status").eq("id", id).maybeSingle();
+  if (plan.error) return { ok: false, message: plan.error.message };
+  if (!plan.data) return { ok: false, message: "Plan not found." };
+
+  const licenseCount = await admin.from("licenses").select("id", { count: "exact", head: true }).eq("plan_id", id);
+  if (licenseCount.error) return { ok: false, message: licenseCount.error.message };
+
+  let mode: "deleted" | "archived" = "deleted";
+  if ((licenseCount.count ?? 0) > 0) {
+    const archived = await admin.from("plans").update({ status: "ARCHIVED", is_publicly_visible: false }).eq("id", id);
+    if (archived.error) return { ok: false, message: archived.error.message };
+    mode = "archived";
+  } else {
+    const removed = await admin.from("plans").delete().eq("id", id);
+    if (removed.error) return { ok: false, message: removed.error.message };
+    mode = "deleted";
+  }
+
+  const supabase = await createSupabaseServerClient();
+  await supabase.from("audit_logs").insert({
+    actor_id: actor.id,
+    action: mode === "deleted" ? "PLAN_DELETED" : "PLAN_ARCHIVED",
+    entity_type: "plan",
+    entity_id: id,
+    before_data: plan.data,
+    after_data: mode === "deleted" ? null : { ...plan.data, status: "ARCHIVED" },
+  });
+
+  revalidatePath("/admin/plans");
+  revalidatePath("/plans");
+  revalidatePath("/subscribe");
+  return {
+    ok: true,
+    message:
+      mode === "deleted"
+        ? `Plan "${plan.data.name}" was permanently deleted.`
+        : `Plan "${plan.data.name}" is currently used by active licenses, so it was safely archived and hidden from public checkout.`,
+  };
+}

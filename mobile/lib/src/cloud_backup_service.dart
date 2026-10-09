@@ -153,7 +153,7 @@ class CloudBackupService {
       inserted: inserted,
       updated: updated,
       unchanged: unchanged,
-      backedUpAt: backedUpAt!,
+      backedUpAt: backedUpAt ?? DateTime.now(),
     );
   }
 

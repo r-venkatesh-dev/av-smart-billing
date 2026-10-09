@@ -256,6 +256,64 @@ void main() {
       expect(products.length, 1);
       expect(products.single.name, 'Wheat Flour 5kg');
     });
+
+    test('imports 50 products successfully with various units and ragged row lengths', () async {
+      final rows = <List<CellValue>>[
+        [
+          TextCellValue('Product Name'),
+          TextCellValue('Price'),
+          TextCellValue('Stock Quantity'),
+          TextCellValue('Unit'),
+          TextCellValue('SKU'),
+          TextCellValue('Barcode'),
+          TextCellValue('GST Rate (%)'),
+          TextCellValue('Discount (%)'),
+        ],
+      ];
+
+      for (var i = 1; i <= 50; i++) {
+        // Vary column length and unit values to simulate real world ragged Excel sheets
+        if (i % 5 == 0) {
+          // Row with only 3 columns (ragged)
+          rows.add([
+            TextCellValue('Product $i'),
+            DoubleCellValue(10.0 + i),
+            DoubleCellValue(i.toDouble()),
+          ]);
+        } else if (i % 3 == 0) {
+          // Row with unit as numeric or special string
+          rows.add([
+            TextCellValue('Product $i'),
+            DoubleCellValue(25.0 + i),
+            DoubleCellValue(5),
+            TextCellValue(i.isEven ? '1pcs' : '1'),
+            TextCellValue('SKU-$i'),
+          ]);
+        } else {
+          // Full 8 columns
+          rows.add([
+            TextCellValue('Product $i'),
+            DoubleCellValue(50.0 + i),
+            DoubleCellValue(100),
+            TextCellValue('kg'),
+            TextCellValue('SKU-$i'),
+            TextCellValue('890123456$i'),
+            DoubleCellValue(5),
+            DoubleCellValue(0),
+          ]);
+        }
+      }
+
+      final bytes = _createExcelBytes(rows);
+      final result = await service.importProducts(bytes, controller);
+
+      expect(result.totalRows, 50);
+      expect(result.addedCount, 50);
+      expect(result.errors, isEmpty);
+
+      final imported = await controller.products();
+      expect(imported.length, 50);
+    });
   });
 
   group('Customers Excel Import', () {

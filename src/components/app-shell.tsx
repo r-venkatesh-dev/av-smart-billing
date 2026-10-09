@@ -3,12 +3,13 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState, type ReactNode } from "react";
-import { Boxes, Building2, Calculator, CircleDollarSign, FileBarChart, FileText, KeyRound, LayoutDashboard, LogOut, Menu, MonitorSmartphone, Package, ScanBarcode, Settings, Users, WalletCards, Warehouse, X } from "lucide-react";
+import { Boxes, Building2, Calculator, CircleDollarSign, FileBarChart, FileText, HardDrive, KeyRound, LayoutDashboard, LogOut, Menu, MonitorSmartphone, Package, ScanBarcode, Settings, Smartphone, Users, WalletCards, Warehouse, X } from "lucide-react";
 import { BrandLogo } from "@/components/brand-logo";
 import { logout } from "@/app/login/actions";
 import { GlobalSearch } from "@/components/global-search";
 import { NavigationFeedback } from "@/components/navigation-feedback";
 import { SessionStatus } from "@/components/session-status";
+import { AdminBusyProvider } from "@/components/admin-busy-overlay";
 
 type NavItem = { label: string; href: string; icon: typeof LayoutDashboard };
 
@@ -19,6 +20,8 @@ const adminNav: NavItem[] = [
   { label: "Devices", href: "/admin/devices", icon: MonitorSmartphone },
   { label: "Plans", href: "/admin/plans", icon: WalletCards },
   { label: "Subscriptions", href: "/admin/subscriptions", icon: CircleDollarSign },
+  { label: "App Versions", href: "/admin/app-versions", icon: Smartphone },
+  { label: "R2 Storage", href: "/admin/storage", icon: HardDrive },
   { label: "Settings", href: "/admin/settings", icon: Settings },
 ];
 
@@ -42,7 +45,8 @@ export function AppShell({ mode, children, user, allowReportsExports = true }: {
   const productName = mode === "admin" ? "Control Center" : "Billing Desk";
 
   return (
-    <div className="min-h-screen bg-[#f6f7fb]">
+    <AdminBusyProvider>
+      <div className="min-h-screen bg-[#f6f7fb]">
       <NavigationFeedback />
       {open ? <button aria-label="Close menu" className="fixed inset-0 z-30 bg-[#11152b]/50 backdrop-blur-[1px] lg:hidden" onClick={() => setOpen(false)} /> : null}
       <aside className={`app-shell-chrome fixed inset-y-0 left-0 z-40 flex w-[264px] flex-col bg-[#171b36] text-white transition-transform duration-200 lg:translate-x-0 ${open ? "translate-x-0" : "-translate-x-full"}`}>
@@ -102,5 +106,6 @@ export function AppShell({ mode, children, user, allowReportsExports = true }: {
         <main className="app-shell-main page-enter mx-auto max-w-[1500px] p-4 sm:p-7 lg:p-8">{children}</main>
       </div>
     </div>
+    </AdminBusyProvider>
   );
 }

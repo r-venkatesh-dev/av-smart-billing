@@ -225,8 +225,9 @@ Future<void> _handleImport(
 
     if (result == null || result.files.isEmpty) return;
 
-    final file = result.files.single;
-    final bytes = file.bytes ?? (file.path != null ? await File(file.path!).readAsBytes() : null);
+    final file = result.files.first;
+    final filePath = file.path;
+    final bytes = file.bytes ?? (filePath != null ? await File(filePath).readAsBytes() : null);
 
     if (bytes == null) {
       if (context.mounted) {

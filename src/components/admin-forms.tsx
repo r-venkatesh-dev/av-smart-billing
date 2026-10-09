@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useActionState, useState } from "react";
+import { useActionState, useEffect, useRef, useState } from "react";
 import { useFormStatus } from "react-dom";
 import { Plus, Trash2 } from "lucide-react";
 import {
@@ -14,6 +14,7 @@ import {
   type EntityFormState,
 } from "@/app/admin/actions";
 import { ThemedDatePicker, ThemedSelect } from "@/components/themed-controls";
+import { useAdminBusy } from "@/components/admin-busy-overlay";
 
 const initialState: EntityFormState = {};
 const inputClass =
@@ -21,6 +22,19 @@ const inputClass =
 
 function SubmitButton({ label }: { label: string }) {
   const { pending } = useFormStatus();
+  const { setBusy } = useAdminBusy();
+  const wasPending = useRef(false);
+
+  useEffect(() => {
+    if (pending) {
+      setBusy(true, "Saving changes…");
+      wasPending.current = true;
+    } else if (wasPending.current) {
+      setBusy(false);
+      wasPending.current = false;
+    }
+  }, [pending, setBusy]);
+
   return (
     <button
       disabled={pending}

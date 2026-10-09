@@ -734,8 +734,11 @@ class AppDatabase {
 
             final match = RegExp(r'(\d+)$').firstMatch(invoiceNumber);
             if (match != null) {
-              final parsedNum = int.tryParse(match.group(1)!) ?? 0;
-              if (parsedNum > maxInvoiceNum) maxInvoiceNum = parsedNum;
+              final groupVal = match.group(1);
+              if (groupVal != null) {
+                final parsedNum = int.tryParse(groupVal) ?? 0;
+                if (parsedNum > maxInvoiceNum) maxInvoiceNum = parsedNum;
+              }
             }
 
             if (customerId != null && customerId.isNotEmpty) {
