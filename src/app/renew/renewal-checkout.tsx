@@ -152,6 +152,28 @@ export function RenewalCheckout({ initialToken }: RenewalCheckoutProps) {
     setMessage("");
 
     try {
+      // If plan is free (0 paise), renew directly without Razorpay!
+      if (details.priceInPaise === 0) {
+        const freeRes = await fetch("/api/subscriptions/renew/verify", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ token, isFree: true }),
+        });
+        const result = await freeRes.json();
+        if (!freeRes.ok || !result.ok) {
+          setMessage(result.message || "Failed to renew plan.");
+          setPaying(false);
+          return;
+        }
+
+        setSuccess({
+          newExpiry: result.newExpiry,
+          planName: result.planName,
+        });
+        setPaying(false);
+        return;
+      }
+
       const razorpayReady = await loadRazorpay();
       if (!razorpayReady || !window.Razorpay) {
         setMessage("Unable to load Razorpay payment gateway. Please check your internet connection.");
@@ -428,6 +450,11 @@ export function RenewalCheckout({ initialToken }: RenewalCheckoutProps) {
                     <LoaderCircle size={18} className="animate-spin" />
                     <span>Processing…</span>
                   </>
+                ) : details.priceInPaise === 0 ? (
+                  <>
+                    <Sparkles size={18} />
+                    <span>Renew Plan (Free)</span>
+                  </>
                 ) : (
                   <>
                     <CreditCard size={18} />
@@ -498,7 +525,7 @@ export function RenewalCheckout({ initialToken }: RenewalCheckoutProps) {
           </button>
         </div>
 
-        <form onSubmit={handleManualLookup} className="mt-5 space-y-4">
+        <form noValidate onSubmit={handleManualLookup} className="mt-5 space-y-4">
           {lookupMode === "KEY" ? (
             <div>
               <label
@@ -510,11 +537,16 @@ export function RenewalCheckout({ initialToken }: RenewalCheckoutProps) {
               <div className="relative mt-1.5">
                 <input
                   id="license-key-input"
+                  name="renewalLicenseKey"
                   type={showKey ? "text" : "password"}
                   value={inputKey}
-                  onChange={(e) => setInputKey(e.target.value.toUpperCase())}
-                  placeholder="e.g. ABCD-EFGH-IJKL-MNOP"
+                  onChange={(e) => {
+                    setInputKey(e.target.value.toUpperCase().trimStart());
+                    setMessage("");
+                  }}
+                  placeholder="e.g. 8GYP-YGEB-2DKR-ANM5"
                   autoComplete="off"
+                  spellCheck={false}
                   className="h-11 w-full rounded-xl border border-[#dfe3e1] bg-white px-3.5 pr-10 font-mono text-sm uppercase tracking-wider text-[#171b36] outline-none transition focus:border-[#004d40] focus:ring-1 focus:ring-[#004d40]"
                 />
                 <button
@@ -526,7 +558,7 @@ export function RenewalCheckout({ initialToken }: RenewalCheckoutProps) {
                 </button>
               </div>
               <p className="mt-1.5 text-[11px] text-[#64748b]">
-                Your key is masked for privacy. You can find this inside your app under Settings → License.
+                Enter your 16-character key (with or without dashes). You can find this in your app under Settings → License.
               </p>
             </div>
           ) : (
@@ -540,11 +572,15 @@ export function RenewalCheckout({ initialToken }: RenewalCheckoutProps) {
               <div className="mt-1.5">
                 <input
                   id="phone-input"
-                  type="tel"
-                  maxLength={10}
+                  name="renewalCustomerPhone"
+                  type="text"
+                  inputMode="numeric"
                   value={inputPhone}
-                  onChange={(e) => setInputPhone(e.target.value.replace(/\D/g, ""))}
-                  placeholder="e.g. 9876543210"
+                  onChange={(e) => {
+                    setInputPhone(e.target.value);
+                    setMessage("");
+                  }}
+                  placeholder="e.g. 9089786756"
                   className="h-11 w-full rounded-xl border border-[#dfe3e1] bg-white px-3.5 text-sm font-semibold tracking-wider text-[#171b36] outline-none transition focus:border-[#004d40] focus:ring-1 focus:ring-[#004d40]"
                 />
               </div>

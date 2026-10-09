@@ -8,9 +8,10 @@ export const runtime = "nodejs";
 
 const verifySchema = z.object({
   token: z.string(),
-  razorpayOrderId: z.string(),
-  razorpayPaymentId: z.string(),
-  razorpaySignature: z.string(),
+  razorpayOrderId: z.string().optional(),
+  razorpayPaymentId: z.string().optional(),
+  razorpaySignature: z.string().optional(),
+  isFree: z.boolean().optional(),
 });
 
 function calculateExtendedExpiry(currentExpiryIso: string, interval: string): Date {
@@ -40,28 +41,20 @@ export async function POST(request: NextRequest) {
     return Response.json({ ok: false, message: "Invalid payment payload." }, { status: 400 });
   }
 
-  const { token, razorpayOrderId, razorpayPaymentId, razorpaySignature } = parsed.data;
+  const { token, razorpayOrderId, razorpayPaymentId, razorpaySignature, isFree } = parsed.data;
 
-  // 1. Verify Razorpay signature
-  if (!verifyCheckoutSignature(razorpayOrderId, razorpayPaymentId, razorpaySignature)) {
-    return Response.json({
-      ok: false,
-      message: "Payment signature verification failed. Please contact support if money was debited.",
-    }, { status: 400 });
-  }
-
-  // 2. Verify renewal token
+  // 1. Verify renewal token
   const payload = verifyRenewalSessionToken(token);
   if (!payload) {
     return Response.json({
       ok: false,
-      message: "Renewal session expired during payment. Your payment is safe. Please contact support with payment ID: " + razorpayPaymentId,
+      message: "Renewal session expired. Please refresh the page and try again.",
     }, { status: 401 });
   }
 
   const supabase = createAdminClient();
 
-  // 3. Get license and plan details
+  // 2. Get license and plan details
   const { data: license, error: licenseError } = await supabase
     .from("licenses")
     .select(`
@@ -97,6 +90,55 @@ export async function POST(request: NextRequest) {
   if (!plan) {
     return Response.json({ ok: false, message: "Plan details missing." }, { status: 500 });
   }
+
+  // Handle Free Plan renewal without payment gateway
+  if (isFree && Number(plan.price_in_paise) === 0) {
+    const newExpiry = calculateExtendedExpiry(license.expires_at, plan.interval);
+    const { error: updateError } = await supabase
+      .from("licenses")
+      .update({
+        expires_at: newExpiry.toISOString(),
+        status: "ACTIVE",
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", license.id);
+
+    if (updateError) {
+      return Response.json({ ok: false, message: updateError.message }, { status: 500 });
+    }
+
+    await supabase.from("audit_logs").insert({
+      action: "LICENSE_RENEWED_FREE",
+      entity_type: "license",
+      entity_id: license.id,
+      before_data: { expires_at: license.expires_at, status: license.status },
+      after_data: { expires_at: newExpiry.toISOString(), status: "ACTIVE" },
+    });
+
+    return Response.json({
+      ok: true,
+      message: "License successfully renewed!",
+      licenseKeyHint: license.license_key_hint,
+      companyName: customer?.company_name,
+      newExpiry: newExpiry.toISOString(),
+      planName: plan.name,
+    }, { headers: { "Cache-Control": "no-store" } });
+  }
+
+  // Verify paid orders
+  if (!razorpayOrderId || !razorpayPaymentId || !razorpaySignature) {
+    return Response.json({ ok: false, message: "Payment details missing." }, { status: 400 });
+  }
+
+  // 3. Verify Razorpay signature
+  if (!verifyCheckoutSignature(razorpayOrderId, razorpayPaymentId, razorpaySignature)) {
+    return Response.json({
+      ok: false,
+      message: "Payment signature verification failed. Please contact support if money was debited.",
+    }, { status: 400 });
+  }
+
+
 
   try {
     // 4. Verify payment with Razorpay

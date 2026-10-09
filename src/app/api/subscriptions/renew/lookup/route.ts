@@ -37,44 +37,66 @@ export async function POST(request: NextRequest) {
     }
     licenseId = payload.licenseId;
   } else if (licenseKey) {
-    const keyHash = hashLicenseKey(licenseKey.trim().toUpperCase());
-    const { data: license } = await supabase
+    const rawKey = licenseKey.trim();
+    const cleanChars = rawKey.replace(/[^A-Za-z0-9]/g, "").toUpperCase();
+    const keyHash = hashLicenseKey(cleanChars);
+
+    let { data: license } = await supabase
       .from("licenses")
       .select("id")
       .eq("license_key_hash", keyHash)
       .maybeSingle();
 
+    // Fallback: Check if user pasted the masked hint (e.g. 8GYP-••••-••••-ANM5)
     if (!license) {
-      return Response.json({ ok: false, message: "No license found matching this key." }, { status: 404 });
+      const hintMatch = await supabase
+        .from("licenses")
+        .select("id")
+        .eq("license_key_hint", rawKey.toUpperCase())
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (hintMatch.data) {
+        license = hintMatch.data;
+      }
+    }
+
+    if (!license) {
+      return Response.json({ ok: false, message: "No license found matching this key. Please check the characters or try looking up with your phone number." }, { status: 404 });
     }
     licenseId = license.id;
   } else if (phone) {
-    const cleanPhone = phone.trim();
-    // Look up customer by phone
-    const { data: customer } = await supabase
+    const digits = phone.replace(/\D/g, "");
+    if (digits.length < 5) {
+      return Response.json({ ok: false, message: "Please enter a valid mobile number." }, { status: 400 });
+    }
+    const last10 = digits.length >= 10 ? digits.slice(-10) : digits;
+
+    // Look up ALL customers matching this phone number (exact or last 10 digits)
+    const { data: matchingCustomers } = await supabase
       .from("customers")
       .select("id")
-      .or(`phone.eq.${cleanPhone},phone.ilike.%${cleanPhone.slice(-10)}%`)
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
+      .or(`phone.eq.${digits},phone.ilike.%${last10}%`);
 
-    if (!customer) {
-      return Response.json({ ok: false, message: "No registered customer found with this phone number." }, { status: 404 });
+    const customerIds = (matchingCustomers ?? []).map((c) => c.id);
+    if (customerIds.length === 0) {
+      return Response.json({ ok: false, message: "No registered customer found with this mobile number." }, { status: 404 });
     }
 
-    const { data: license } = await supabase
+    // Find licenses across ALL matching customer accounts
+    const { data: licenses } = await supabase
       .from("licenses")
-      .select("id")
-      .eq("customer_id", customer.id)
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
+      .select("id, status, expires_at, created_at")
+      .in("customer_id", customerIds)
+      .order("expires_at", { ascending: false });
 
-    if (!license) {
+    if (!licenses || licenses.length === 0) {
       return Response.json({ ok: false, message: "No license associated with this customer phone." }, { status: 404 });
     }
-    licenseId = license.id;
+
+    // Prioritize active license with the latest expiry date
+    const activeLicense = licenses.find((l) => l.status === "ACTIVE") || licenses[0];
+    licenseId = activeLicense.id;
   } else {
     return Response.json({ ok: false, message: "Please provide a token, license key, or registered phone number." }, { status: 400 });
   }
