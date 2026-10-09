@@ -37,9 +37,13 @@ export function AdminBusyProvider({ children }: { children: ReactNode }) {
   const timeoutRef = useRef<number | null>(null);
 
   // Clear busy on pathname change
-  useEffect(() => {
-    setIsBusyState(false);
-  }, [pathname]);
+  const [prevPathname, setPrevPathname] = useState(pathname);
+  if (prevPathname !== pathname) {
+    setPrevPathname(pathname);
+    if (isBusy) {
+      setIsBusyState(false);
+    }
+  }
 
   const setBusy = useCallback((busy: boolean, msg?: string) => {
     if (timeoutRef.current) {

@@ -8,7 +8,6 @@ import {
   AlertTriangle,
   Loader2,
   Smartphone,
-  ExternalLink,
   CheckCircle2,
   XCircle,
 } from "lucide-react";

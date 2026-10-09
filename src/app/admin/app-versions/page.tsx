@@ -1,5 +1,4 @@
 import { Smartphone, Apple, CheckCircle2, AlertCircle, ArrowUpRight } from "lucide-react";
-import { PageHeader } from "@/components/ui";
 import {
   CreateVersionButton,
   EditVersionButton,

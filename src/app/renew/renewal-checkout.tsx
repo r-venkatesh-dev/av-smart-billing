@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import {
   CheckCircle2,
   Clock,
@@ -9,7 +10,6 @@ import {
   EyeOff,
   KeyRound,
   LoaderCircle,
-  RefreshCw,
   Search,
   ShieldCheck,
   Store,
@@ -289,12 +289,12 @@ export function RenewalCheckout({ initialToken }: RenewalCheckoutProps) {
             </ol>
           </div>
 
-          <a
+          <Link
             href="/"
             className="mt-8 inline-flex h-11 items-center justify-center rounded-xl bg-[#004d40] px-8 text-xs font-bold uppercase tracking-wider text-white shadow transition hover:bg-[#00382f]"
           >
             Back to Home
-          </a>
+          </Link>
         </div>
       </div>
     );
@@ -577,9 +577,9 @@ export function RenewalCheckout({ initialToken }: RenewalCheckoutProps) {
 
       <div className="mt-6 rounded-xl border border-dashed border-[#cbd5e1] p-4 text-center text-xs text-[#64748b]">
         Are you a new customer without a license yet?{" "}
-        <a href="/subscribe" className="font-bold text-[#004d40] hover:underline">
+        <Link href="/subscribe" className="font-bold text-[#004d40] hover:underline">
           Purchase a new activation key here →
-        </a>
+        </Link>
       </div>
     </div>
   );

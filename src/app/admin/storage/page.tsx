@@ -1,4 +1,4 @@
-import { listR2Files, getR2Config } from "@/lib/r2-storage";
+import { listR2Files } from "@/lib/r2-storage";
 import { checkR2Status } from "@/app/admin/storage-actions";
 import { R2StorageManager } from "@/components/r2-storage-manager";
 import { requireAdminRole } from "@/lib/auth/authorization";

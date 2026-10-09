@@ -13,10 +13,8 @@ import {
   Loader2,
   Search,
   ExternalLink,
-  ShieldCheck,
   CheckCircle2,
   FolderOpen,
-  Info,
 } from "lucide-react";
 import type { R2FileItem } from "@/lib/r2-storage";
 import {

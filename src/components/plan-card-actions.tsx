@@ -71,7 +71,7 @@ export function PlanCardActions({
                 <h3 className="text-base font-bold text-[#101828]">Delete Plan</h3>
                 <p className="mt-1.5 text-xs leading-relaxed text-[#667085]">
                   Are you sure you want to delete the plan{" "}
-                  <strong className="text-[#344054]">"{planName}"</strong>?
+                  <strong className="text-[#344054]">&ldquo;{planName}&rdquo;</strong>?
                 </p>
                 <div className="mt-3 rounded-xl bg-slate-50 p-3 text-xs text-[#475467] border border-[#e4e7ec]">
                   ℹ️ If any existing licenses are using this plan, it will be safely retired and hidden from public purchases to ensure active customers are not disrupted.

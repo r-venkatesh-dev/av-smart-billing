@@ -8,11 +8,7 @@ export const metadata = {
 
 export const dynamic = "force-dynamic";
 
-interface PageProps {
-  searchParams: Promise<{ token?: string }>;
-}
-
-export default async function RenewPage({ searchParams }: PageProps) {
+export default async function RenewPage({ searchParams }: PageProps<"/renew">) {
   const params = await searchParams;
   const initialToken = typeof params.token === "string" ? params.token : undefined;
 
