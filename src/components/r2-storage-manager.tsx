@@ -40,12 +40,14 @@ export function R2StorageManager({
   bucketName,
   publicBaseUrl,
   accountIdMasked,
+  connectionError,
 }: {
   initialFiles: R2FileItem[];
   isConfigured: boolean;
   bucketName: string | null;
   publicBaseUrl: string | null;
   accountIdMasked: string | null;
+  connectionError?: string | null;
 }) {
   const [files, setFiles] = useState<R2FileItem[]>(initialFiles);
   const [filter, setFilter] = useState<"all" | "windows" | "mac" | "android">("all");
@@ -223,6 +225,21 @@ export function R2StorageManager({
               </div>
               <p className="text-[11px] text-amber-700">
                 💡 In Cloudflare Dashboard, go to <strong>R2 Object Storage → Manage R2 API Tokens → Create API token</strong> with Object Read &amp; Write permissions.
+              </p>
+            </div>
+          </div>
+        </div>
+      ) : connectionError ? (
+        <div className="surface rounded-2xl border border-rose-200 bg-rose-50/80 p-5 text-rose-950 shadow-sm">
+          <div className="flex items-start gap-3.5">
+            <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-rose-100 text-rose-700">
+              <AlertTriangle size={20} />
+            </div>
+            <div className="space-y-1.5">
+              <h2 className="text-sm font-bold text-rose-950">Cloudflare R2 Connection Failed</h2>
+              <p className="text-xs text-rose-800 leading-relaxed">{connectionError}</p>
+              <p className="text-[11px] text-rose-700 pt-1">
+                Make sure the bucket name is spelled exactly as shown in your Cloudflare dashboard (e.g. <code className="rounded bg-rose-100/70 px-1 py-0.5 font-mono">av-smartbilling</code>) and the account ID is 32 hexadecimal characters.
               </p>
             </div>
           </div>
