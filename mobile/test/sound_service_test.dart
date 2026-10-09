@@ -5,32 +5,35 @@ import 'package:flutter_test/flutter_test.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  test('SoundService invokes platform channel methods cleanly without throwing', () async {
-    final List<MethodCall> calls = [];
-    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-        .setMockMethodCallHandler(
-      const MethodChannel('in.avsmartbilling.mobile/sound'),
-      (MethodCall methodCall) async {
-        calls.add(methodCall);
-        return true;
-      },
-    );
+  test(
+    'SoundService invokes platform channel methods cleanly without throwing',
+    () async {
+      final List<MethodCall> calls = [];
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(
+            const MethodChannel('com.avsmartbilling/sound'),
+            (MethodCall methodCall) async {
+              calls.add(methodCall);
+              return true;
+            },
+          );
 
-    await SoundService.beepSuccess();
-    expect(calls.map((c) => c.method), contains('beepSuccess'));
+      await SoundService.beepSuccess();
+      expect(calls.map((c) => c.method), contains('beepSuccess'));
 
-    await SoundService.beepError();
-    expect(calls.map((c) => c.method), contains('beepError'));
-  });
+      await SoundService.beepError();
+      expect(calls.map((c) => c.method), contains('beepError'));
+    },
+  );
 
   test('SoundService handles platform channel exceptions gracefully', () async {
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(
-      const MethodChannel('in.avsmartbilling.mobile/sound'),
-      (MethodCall methodCall) async {
-        throw PlatformException(code: 'UNAVAILABLE');
-      },
-    );
+          const MethodChannel('com.avsmartbilling/sound'),
+          (MethodCall methodCall) async {
+            throw PlatformException(code: 'UNAVAILABLE');
+          },
+        );
 
     // Should not throw
     await SoundService.beepSuccess();

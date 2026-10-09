@@ -6,7 +6,7 @@
   "private": true,
   "main": "main.cjs",
   "build": {
-    "appId": "in.avsmartbilling.desktop",
+    "appId": "com.avsmartbilling.desktop",
     "productName": "AV Smartbilling",
     "electronVersion": "43.3.0",
     "asar": true,

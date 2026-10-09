@@ -41,6 +41,6 @@ insert into public.app_versions (
   2,
   1,
   'Initial production release with offline-first billing, barcode scanner, and Bluetooth printing.',
-  'https://play.google.com/store/apps/details?id=in.avsmartbilling.mobile',
+  'https://play.google.com/store/apps/details?id=com.avsmartbilling',
   true
 ) on conflict do nothing;

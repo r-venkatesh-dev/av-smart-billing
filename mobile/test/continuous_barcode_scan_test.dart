@@ -9,7 +9,7 @@ void main() {
   setUp(() {
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(
-      const MethodChannel('in.avsmartbilling.mobile/sound'),
+      const MethodChannel('com.avsmartbilling/sound'),
       (MethodCall methodCall) async => true,
     );
   });

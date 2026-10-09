@@ -3,7 +3,7 @@ import 'package:flutter/services.dart';
 /// Service providing native retail POS scanner audio and haptic feedback.
 class SoundService {
   static const MethodChannel _channel =
-      MethodChannel('in.avsmartbilling.mobile/sound');
+      MethodChannel('com.avsmartbilling/sound');
 
   /// Crisp high-frequency POS barcode scanner beep.
   static Future<void> beepSuccess() async {

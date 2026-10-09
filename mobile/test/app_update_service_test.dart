@@ -24,7 +24,7 @@ void main() {
             'latestBuildNumber': 10,
             'minRequiredBuild': 1,
             'releaseNotes': 'Faster invoice printing and bug fixes.',
-            'updateUrl': 'https://play.google.com/store/apps/details?id=in.avsmartbilling.mobile',
+            'updateUrl': 'https://play.google.com/store/apps/details?id=com.avsmartbilling',
           }),
           200,
         );
@@ -51,7 +51,7 @@ void main() {
             'latestBuildNumber': 20,
             'minRequiredBuild': 15,
             'releaseNotes': 'Critical database migration update.',
-            'updateUrl': 'https://play.google.com/store/apps/details?id=in.avsmartbilling.mobile',
+            'updateUrl': 'https://play.google.com/store/apps/details?id=com.avsmartbilling',
           }),
           200,
         );

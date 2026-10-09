@@ -7,7 +7,7 @@ import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 
 class MainActivity : FlutterFragmentActivity() {
-    private val soundChannel = "in.avsmartbilling.mobile/sound"
+    private val soundChannel = "com.avsmartbilling/sound"
     private var toneGenerator: ToneGenerator? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {

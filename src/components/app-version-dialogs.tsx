@@ -174,7 +174,7 @@ export function CreateVersionButton() {
                   type="url"
                   name="updateUrl"
                   required
-                  defaultValue="https://play.google.com/store/apps/details?id=in.avsmartbilling.mobile"
+                  defaultValue="https://play.google.com/store/apps/details?id=com.avsmartbilling"
                   className="focus-ring h-10 w-full rounded-xl border border-[#dfe3eb] bg-white px-3 text-sm text-[#101828]"
                 />
               </div>

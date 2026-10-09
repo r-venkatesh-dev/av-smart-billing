@@ -144,7 +144,7 @@ class AppUpdateService {
       final minRequired = payload['minRequiredBuild'] as int? ?? 1;
       final releaseNotes = payload['releaseNotes'] as String? ?? '';
       final updateUrl = payload['updateUrl'] as String? ??
-          'https://play.google.com/store/apps/details?id=in.avsmartbilling.mobile';
+          'https://play.google.com/store/apps/details?id=com.avsmartbilling';
 
       // Save last check timestamp
       await _writeLastCheck(DateTime.now().toIso8601String());
