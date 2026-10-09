@@ -179,6 +179,70 @@ export async function changeLicenseStatus(id: string, operation: "SUSPEND" | "RE
   return { ok: true, message: operation === "REVOKE" ? "License revoked and all active devices were blocked." : `License is now ${status.toLowerCase()}.` };
 }
 
+export async function renewAdminLicense(
+  id: string,
+  months: number,
+  customExpiryDate?: string
+): Promise<LicenseMutationResult> {
+  const actor = await requireAdminRole(ADMIN_WRITE_ROLES.licenses);
+  const admin = createAdminClient();
+  const before = await admin
+    .from("licenses")
+    .select("id, status, expires_at, license_key_hint, plan_id, customer_id")
+    .eq("id", id)
+    .maybeSingle();
+
+  if (before.error || !before.data) {
+    return { ok: false, message: before.error?.message ?? "License not found." };
+  }
+
+  let newExpiry: Date;
+  if (customExpiryDate) {
+    newExpiry = new Date(customExpiryDate);
+  } else {
+    const currentExpiry = new Date(before.data.expires_at);
+    const now = new Date();
+    const baseDate = currentExpiry > now ? currentExpiry : now;
+    newExpiry = new Date(baseDate);
+    newExpiry.setMonth(newExpiry.getMonth() + months);
+  }
+
+  if (isNaN(newExpiry.getTime()) || newExpiry <= new Date()) {
+    return { ok: false, message: "Invalid renewal expiry date. Must be in the future." };
+  }
+
+  const updated = await admin
+    .from("licenses")
+    .update({
+      expires_at: newExpiry.toISOString(),
+      status: "ACTIVE",
+    })
+    .eq("id", id)
+    .select("id, status, expires_at, license_key_hint")
+    .single();
+
+  if (updated.error) {
+    return { ok: false, message: updated.error.message };
+  }
+
+  const supabase = await createSupabaseServerClient();
+  await supabase.from("audit_logs").insert({
+    actor_id: actor.id,
+    action: "LICENSE_RENEWED",
+    entity_type: "license",
+    entity_id: id,
+    before_data: before.data,
+    after_data: updated.data,
+  });
+
+  revalidatePath("/admin/licenses");
+  revalidatePath(`/admin/licenses/${id}`);
+  return {
+    ok: true,
+    message: `License renewed successfully until ${newExpiry.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}.`,
+  };
+}
+
 export async function deactivateLicenseDevice(licenseId: string, deviceId: string): Promise<LicenseMutationResult> {
   const actor = await requireAdminRole(ADMIN_WRITE_ROLES.devices);
   const admin = createAdminClient();

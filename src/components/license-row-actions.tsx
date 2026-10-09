@@ -1,9 +1,10 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { Trash2, AlertTriangle, Loader2 } from "lucide-react";
+import { Trash2, AlertTriangle, Loader2, CalendarPlus } from "lucide-react";
 import { deleteLicense } from "@/app/admin/actions";
 import { useAdminBusy } from "@/components/admin-busy-overlay";
+import { RenewLicenseDialog } from "@/components/renew-license-dialog";
 
 export function LicenseRowActions({
   licenseId,
@@ -15,6 +16,7 @@ export function LicenseRowActions({
   customerName: string;
 }) {
   const [showConfirm, setShowConfirm] = useState(false);
+  const [showRenew, setShowRenew] = useState(false);
   const [isPending, startTransition] = useTransition();
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const { runWithBusy } = useAdminBusy();
@@ -39,17 +41,35 @@ export function LicenseRowActions({
 
   return (
     <>
-      <button
-        type="button"
-        onClick={() => {
-          setErrorMessage(null);
-          setShowConfirm(true);
-        }}
-        title={`Delete license ${licenseKey}`}
-        className="focus-ring rounded-lg p-1.5 text-[#98a2b3] transition hover:bg-rose-50 hover:text-rose-600"
-      >
-        <Trash2 size={16} />
-      </button>
+      <div className="flex items-center gap-1">
+        <button
+          type="button"
+          onClick={() => setShowRenew(true)}
+          title={`Renew / Extend license ${licenseKey}`}
+          className="focus-ring rounded-lg p-1.5 text-[#057c73] transition hover:bg-[#e6f4f2] hover:text-[#04675f]"
+        >
+          <CalendarPlus size={16} />
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            setErrorMessage(null);
+            setShowConfirm(true);
+          }}
+          title={`Delete license ${licenseKey}`}
+          className="focus-ring rounded-lg p-1.5 text-[#98a2b3] transition hover:bg-rose-50 hover:text-rose-600"
+        >
+          <Trash2 size={16} />
+        </button>
+      </div>
+
+      <RenewLicenseDialog
+        licenseId={licenseId}
+        licenseKey={licenseKey}
+        customerName={customerName}
+        isOpen={showRenew}
+        onClose={() => setShowRenew(false)}
+      />
 
       {showConfirm ? (
         <div

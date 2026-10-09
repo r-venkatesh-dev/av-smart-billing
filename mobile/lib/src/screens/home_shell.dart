@@ -3,10 +3,12 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
+import 'package:url_launcher/url_launcher.dart';
 
 import '../app.dart';
 import '../app_update_service.dart';
 import '../billing_mode_service.dart';
+import '../models.dart';
 import '../online_billing_service.dart';
 import '../ui_helpers.dart';
 import 'about_screen.dart';
@@ -330,7 +332,14 @@ class _HomeShellState extends State<HomeShell> {
         return Scaffold(
           key: _scaffoldKey,
           drawer: _drawer(index),
-          body: IndexedStack(index: index, children: pages),
+          body: Column(
+            children: [
+              _buildExpiryNoticeBanner(widget.controller.session),
+              Expanded(
+                child: IndexedStack(index: index, children: pages),
+              ),
+            ],
+          ),
           floatingActionButton: FloatingActionButton(
             backgroundColor: const Color(0xff057c73),
             foregroundColor: Colors.white,
@@ -370,6 +379,172 @@ class _HomeShellState extends State<HomeShell> {
           ),
         );
       },
+    );
+  }
+
+  Widget _buildExpiryNoticeBanner(LicenseSession? session) {
+    if (session == null) return const SizedBox.shrink();
+    final now = DateTime.now();
+    final diff = session.expiresAt.difference(now);
+    final daysRemaining = diff.inDays;
+
+    final isExpired = diff.isNegative;
+    final isExpiringSoon = !isExpired && daysRemaining <= 3;
+
+    if (!isExpired && !isExpiringSoon) return const SizedBox.shrink();
+
+    final Color bgColor = isExpired ? const Color(0xfffef2f2) : const Color(0xfffffbeb);
+    final Color borderColor = isExpired ? const Color(0xfffecaca) : const Color(0xfffef3c7);
+    final Color textColor = isExpired ? const Color(0xff991b1b) : const Color(0xff92400e);
+    final Color btnBgColor = isExpired ? const Color(0xffdc2626) : const Color(0xffd97706);
+
+    final String message = isExpired
+        ? 'License expired. Renew your license to prevent billing interruption.'
+        : daysRemaining == 0
+            ? 'License expires today! Tap to renew now.'
+            : 'License expires in $daysRemaining ${daysRemaining == 1 ? 'day' : 'days'}. Tap to renew.';
+
+    return Material(
+      color: bgColor,
+      child: Container(
+        decoration: BoxDecoration(
+          border: Border(bottom: BorderSide(color: borderColor)),
+        ),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+        child: Row(
+          children: [
+            Icon(
+              isExpired ? Icons.warning_amber_rounded : Icons.access_time_filled_rounded,
+              size: 17,
+              color: textColor,
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                message,
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: textColor,
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            ElevatedButton(
+              onPressed: () => _openRenewalOptions(session),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: btnBgColor,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 0),
+                minimumSize: const Size(0, 28),
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                elevation: 0,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(6),
+                ),
+              ),
+              child: const Text('Renew', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _openRenewalOptions(LicenseSession session) async {
+    await showModalBottomSheet<void>(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (sheetContext) => Padding(
+        padding: const EdgeInsets.fromLTRB(20, 20, 20, 28),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: const Color(0xfffef3c7),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Icon(Icons.autorenew_rounded, color: Color(0xffb45309), size: 22),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Renew License Key',
+                        style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold, color: Color(0xff004d40)),
+                      ),
+                      Text(
+                        'Licensed to ${session.customerName} (${session.planName})',
+                        style: const TextStyle(fontSize: 12, color: Color(0xff64748b)),
+                      ),
+                    ],
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.close),
+                  onPressed: () => Navigator.pop(sheetContext),
+                ),
+              ],
+            ),
+            const SizedBox(height: 14),
+            const Text(
+              'Renewing your license extends your existing key without re-entering business details or losing data.',
+              style: TextStyle(fontSize: 13, color: Color(0xff334155), height: 1.4),
+            ),
+            const SizedBox(height: 18),
+            FilledButton.icon(
+              icon: const Icon(Icons.open_in_browser_rounded, size: 18),
+              label: const Text('Renew Online via Website'),
+              style: FilledButton.styleFrom(
+                backgroundColor: const Color(0xff004d40),
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+              onPressed: () async {
+                Navigator.pop(sheetContext);
+                const url = 'https://av-smart-billing.vercel.app/subscribe';
+                final uri = Uri.parse(url);
+                if (await canLaunchUrl(uri)) {
+                  await launchUrl(uri, mode: LaunchMode.externalApplication);
+                }
+              },
+            ),
+            const SizedBox(height: 10),
+            OutlinedButton.icon(
+              icon: const Icon(Icons.sync_rounded, size: 18),
+              label: const Text('Already Renewed? Refresh License'),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: const Color(0xff004d40),
+                side: const BorderSide(color: Color(0xff004d40)),
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+              onPressed: () async {
+                Navigator.pop(sheetContext);
+                try {
+                  await widget.controller.validateLicense();
+                  if (mounted) {
+                    showMessage(context, 'License synchronized successfully!');
+                  }
+                } catch (e) {
+                  if (mounted) {
+                    showMessage(context, errorMessage(e), error: true);
+                  }
+                }
+              },
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
