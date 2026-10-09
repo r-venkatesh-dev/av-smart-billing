@@ -59,7 +59,7 @@ Future<void> showImportActionSheet({
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            '$label Excel Tools',
+                            '$label Excel & CSV Tools',
                             style: const TextStyle(
                               fontSize: 19,
                               fontWeight: FontWeight.w800,
@@ -68,8 +68,8 @@ Future<void> showImportActionSheet({
                           ),
                           Text(
                             isProducts
-                                ? 'Import, export or get sample template'
-                                : 'Manage customers in bulk via Excel',
+                                ? 'Import, export or get sample template (.xlsx & .csv)'
+                                : 'Manage customers in bulk via Excel or CSV',
                             style: const TextStyle(
                               fontSize: 13,
                               color: Color(0xff64748b),
@@ -89,7 +89,7 @@ Future<void> showImportActionSheet({
               const Divider(height: 1),
               const SizedBox(height: 8),
 
-              // Option 1: Import from Excel
+              // Option 1: Import from Excel or CSV
               ListTile(
                 contentPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 4),
                 leading: Container(
@@ -103,11 +103,11 @@ Future<void> showImportActionSheet({
                   child: const Icon(Icons.file_upload_outlined, color: Color(0xff16a34a)),
                 ),
                 title: Text(
-                  'Import $label from Excel',
+                  'Import $label (Excel / CSV)',
                   style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
                 ),
                 subtitle: const Text(
-                  'Upload .xlsx file. Existing duplicates will be replaced automatically.',
+                  'Upload .xlsx or .csv file. Duplicates are updated in place automatically.',
                   style: TextStyle(fontSize: 12, color: Color(0xff64748b)),
                 ),
                 trailing: const Icon(Icons.chevron_right, color: Color(0xff94a3b8)),
@@ -145,7 +145,7 @@ Future<void> showImportActionSheet({
                 },
               ),
 
-              // Option 3: Download Template
+              // Option 3: Download Excel Template
               ListTile(
                 contentPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 4),
                 leading: Container(
@@ -159,7 +159,7 @@ Future<void> showImportActionSheet({
                   child: const Icon(Icons.description_outlined, color: Color(0xffca8a04)),
                 ),
                 title: const Text(
-                  'Download Excel Template',
+                  'Download Excel Template (.xlsx)',
                   style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
                 ),
                 subtitle: Text(
@@ -172,6 +172,44 @@ Future<void> showImportActionSheet({
                 onTap: () async {
                   Navigator.pop(sheetContext);
                   await _handleDownloadTemplate(context, service, type);
+                },
+              ),
+
+              // Option 4: Download CSV Template
+              ListTile(
+                contentPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 4),
+                leading: Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    color: const Color(0xfff5f3ff),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: const Color(0xffddd6fe)),
+                  ),
+                  child: const Icon(Icons.table_rows_outlined, color: Color(0xff7c3aed)),
+                ),
+                title: const Text(
+                  'Download CSV Template (.csv)',
+                  style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
+                ),
+                subtitle: const Text(
+                  'Universal spreadsheet format with zero formatting issues.',
+                  style: TextStyle(fontSize: 12, color: Color(0xff64748b)),
+                ),
+                trailing: const Icon(Icons.chevron_right, color: Color(0xff94a3b8)),
+                onTap: () async {
+                  Navigator.pop(sheetContext);
+                  try {
+                    if (isProducts) {
+                      await service.exportSampleProductsCsv();
+                    } else {
+                      await service.exportSampleCustomersCsv();
+                    }
+                  } catch (e) {
+                    if (context.mounted) {
+                      showMessage(context, errorMessage(e), error: true);
+                    }
+                  }
                 },
               ),
 
@@ -219,7 +257,7 @@ Future<void> _handleImport(
   try {
     final result = await FilePicker.pickFiles(
       type: FileType.custom,
-      allowedExtensions: ['xlsx'],
+      allowedExtensions: ['xlsx', 'csv', 'xls'],
       withData: true,
     );
 
@@ -254,7 +292,7 @@ Future<void> _handleImport(
               CircularProgressIndicator(),
               SizedBox(height: 16),
               Text(
-                'Reading Excel records and checking for duplicates…',
+                'Reading spreadsheet records and checking for duplicates…',
                 textAlign: TextAlign.center,
                 style: TextStyle(fontSize: 13, color: Color(0xff64748b)),
               ),
@@ -267,9 +305,9 @@ Future<void> _handleImport(
 
     ImportResult importResult;
     if (type == ImportDataType.products) {
-      importResult = await service.importProducts(bytes, controller);
+      importResult = await service.importProducts(bytes, controller, fileName: file.name);
     } else {
-      importResult = await service.importCustomers(bytes, controller);
+      importResult = await service.importCustomers(bytes, controller, fileName: file.name);
     }
 
     if (context.mounted) {

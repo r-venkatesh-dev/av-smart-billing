@@ -1,8 +1,11 @@
+import 'dart:convert';
 import 'dart:typed_data';
 
+import 'package:archive/archive.dart';
 import 'package:excel/excel.dart';
 import 'package:intl/intl.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:xml/xml.dart';
 
 import 'app.dart';
 import 'input_rules.dart';
@@ -219,44 +222,60 @@ class ExcelImportExportService {
   }
 
   // ===========================================================================
-  // PRODUCTS: IMPORT WITH DUPLICATE REPLACEMENT
+  // SAMPLE CSV TEMPLATES
   // ===========================================================================
 
-  Future<ImportResult> importProducts(Uint8List bytes, AppController controller) async {
-    final Excel excel;
-    try {
-      excel = Excel.decodeBytes(bytes);
-    } catch (e) {
-      throw Exception(
-        'Could not read this Excel file. Please ensure it is a valid .xlsx file or try opening and re-saving it before importing.',
-      );
-    }
+  Future<void> exportSampleProductsCsv() async {
+    const csvContent = '''Product Name,Price,Stock,Unit,Item Code / SKU,Barcode,GST Rate (%),Discount (%)
+Basmati Rice 1kg,120,50,kg,SKU-RICE-01,8901234567890,5%,0%
+Sunflower Oil 1L,145.5,30,L,SKU-OIL-01,,5%,2%
+Atta Whole Wheat 5kg,240,40,bag,SKU-ATTA-05,,0%,0%
+Toor Dal 1kg,160,25,kg,SKU-DAL-01,,5%,0%
+Tea Powder 250g,95,60,pcs,SKU-TEA-250,,12%,5%''';
 
-    if (excel.tables.isEmpty) {
-      throw Exception('The selected Excel file contains no worksheets.');
-    }
+    await _share(
+      Uint8List.fromList(utf8.encode('\uFEFF$csvContent')),
+      'av-smartbilling-products-template.csv',
+      'AV Smartbilling Products CSV Template',
+      'Template CSV file for importing products into AV Smartbilling.',
+    );
+  }
 
-    Sheet? sheet;
-    for (final entry in excel.tables.entries) {
-      final name = entry.key.toLowerCase();
-      if ((name.contains('product') || name.contains('item')) && entry.value.rows.isNotEmpty) {
-        sheet = entry.value;
-        break;
-      }
-    }
-    sheet ??= excel.tables.values.where((s) => s.rows.isNotEmpty).firstOrNull;
+  Future<void> exportSampleCustomersCsv() async {
+    const csvContent = '''Customer Name,Phone Number,GSTIN,Address
+Ramesh Kumar,9876543210,33AAAAA0000A1Z5,"Shop #4, Main Bazaar, City"
+Priya Sharma,9123456780,,"12 Green Avenue, Gandhi Nagar"
+Super Bazaar Wholesalers,9811223344,29BBBBB1111B2Z6,"Plot 45, Industrial Area Phase 2"''';
 
-    if (sheet == null || sheet.rows.isEmpty) {
-      throw Exception('The Excel sheet contains no rows.');
+    await _share(
+      Uint8List.fromList(utf8.encode('\uFEFF$csvContent')),
+      'av-smartbilling-customers-template.csv',
+      'AV Smartbilling Customers CSV Template',
+      'Template CSV file for importing customers into AV Smartbilling.',
+    );
+  }
+
+  // ===========================================================================
+  // PRODUCTS: IMPORT WITH DUPLICATE REPLACEMENT (XLSX & CSV SUPPORT)
+  // ===========================================================================
+
+  Future<ImportResult> importProducts(
+    Uint8List bytes,
+    AppController controller, {
+    String? fileName,
+  }) async {
+    final rows = _decodeTableRows(bytes, fileName: fileName, targetType: 'product');
+    if (rows.isEmpty) {
+      throw Exception('The spreadsheet contains no rows.');
     }
 
     // Find header row
     int headerRowIndex = -1;
     final headerMap = <String, int>{};
 
-    for (var r = 0; r < sheet.rows.length; r++) {
-      final row = sheet.rows[r];
-      final colNames = row.map(_cellString).map((s) => s.toLowerCase().trim()).toList();
+    for (var r = 0; r < rows.length; r++) {
+      final row = rows[r];
+      final colNames = row.map((s) => s.toLowerCase().trim()).toList();
 
       if (colNames.any((c) => c.contains('product') || c.contains('name') || c.contains('item'))) {
         headerRowIndex = r;
@@ -287,7 +306,7 @@ class ExcelImportExportService {
 
     if (headerRowIndex == -1 || !headerMap.containsKey('name')) {
       throw Exception(
-        'Could not find valid column headers in the Excel file. Please use the downloadable template.',
+        'Could not find valid column headers in the file. Please ensure column headers include "Product Name", "Price", "Stock", and "Unit".',
       );
     }
 
@@ -297,40 +316,40 @@ class ExcelImportExportService {
     final errors = <String>[];
     int processedDataRows = 0;
 
-    for (var r = headerRowIndex + 1; r < sheet.rows.length; r++) {
-      final row = sheet.rows[r];
-      if (row.every((cell) => _cellString(cell).isEmpty)) continue;
+    for (var r = headerRowIndex + 1; r < rows.length; r++) {
+      final row = rows[r];
+      if (row.every((cell) => cell.trim().isEmpty)) continue;
 
       processedDataRows++;
       final rowNum = r + 1;
 
       try {
-        final name = _cellString(_cellAt(row, headerMap['name']));
+        final name = _strAt(row, headerMap['name']);
         if (name.length < 2) {
           errors.add('Row $rowNum: Product name is required (min 2 characters).');
           continue;
         }
 
-        final priceVal = _cellDouble(_cellAt(row, headerMap['price']));
+        final priceVal = _doubleAt(row, headerMap['price']);
         if (priceVal == null || priceVal < 0) {
           errors.add('Row $rowNum ("$name"): Valid price is required (0 or greater).');
           continue;
         }
 
-        final rawStock = _cellDouble(_cellAt(row, headerMap['stock']));
+        final rawStock = _doubleAt(row, headerMap['stock']);
         final stockVal = rawStock ?? 0.0;
         if (stockVal < 0) {
           errors.add('Row $rowNum ("$name"): Valid stock quantity is required (0 or greater).');
           continue;
         }
 
-        final rawUnit = _cellString(_cellAt(row, headerMap['unit']));
+        final rawUnit = _strAt(row, headerMap['unit']);
         final cleanUnit = readableUnit(rawUnit.isEmpty ? 'pcs' : rawUnit, quantity: 1);
 
-        final rawSku = _cellString(_cellAt(row, headerMap['sku']));
-        final rawBarcode = _cellString(_cellAt(row, headerMap['barcode']));
-        final taxRateVal = _cellDouble(_cellAt(row, headerMap['tax'])) ?? 0.0;
-        final discountVal = _cellDouble(_cellAt(row, headerMap['discount'])) ?? 0.0;
+        final rawSku = _strAt(row, headerMap['sku']);
+        final rawBarcode = _strAt(row, headerMap['barcode']);
+        final taxRateVal = _doubleAt(row, headerMap['tax']) ?? 0.0;
+        final discountVal = _doubleAt(row, headerMap['discount']) ?? 0.0;
 
         if (taxRateVal < 0 || taxRateVal > 100) {
           errors.add('Row $rowNum ("$name"): GST Rate must be between 0% and 100%.');
@@ -396,43 +415,25 @@ class ExcelImportExportService {
   }
 
   // ===========================================================================
-  // CUSTOMERS: IMPORT WITH DUPLICATE REPLACEMENT
+  // CUSTOMERS: IMPORT WITH DUPLICATE REPLACEMENT (XLSX & CSV SUPPORT)
   // ===========================================================================
 
-  Future<ImportResult> importCustomers(Uint8List bytes, AppController controller) async {
-    final Excel excel;
-    try {
-      excel = Excel.decodeBytes(bytes);
-    } catch (e) {
-      throw Exception(
-        'Could not read this Excel file. Please ensure it is a valid .xlsx file or try opening and re-saving it before importing.',
-      );
-    }
-
-    if (excel.tables.isEmpty) {
-      throw Exception('The selected Excel file contains no worksheets.');
-    }
-
-    Sheet? sheet;
-    for (final entry in excel.tables.entries) {
-      final name = entry.key.toLowerCase();
-      if ((name.contains('customer') || name.contains('client')) && entry.value.rows.isNotEmpty) {
-        sheet = entry.value;
-        break;
-      }
-    }
-    sheet ??= excel.tables.values.where((s) => s.rows.isNotEmpty).firstOrNull;
-
-    if (sheet == null || sheet.rows.isEmpty) {
-      throw Exception('The Excel sheet contains no rows.');
+  Future<ImportResult> importCustomers(
+    Uint8List bytes,
+    AppController controller, {
+    String? fileName,
+  }) async {
+    final rows = _decodeTableRows(bytes, fileName: fileName, targetType: 'customer');
+    if (rows.isEmpty) {
+      throw Exception('The spreadsheet contains no rows.');
     }
 
     int headerRowIndex = -1;
     final headerMap = <String, int>{};
 
-    for (var r = 0; r < sheet.rows.length; r++) {
-      final row = sheet.rows[r];
-      final colNames = row.map(_cellString).map((s) => s.toLowerCase().trim()).toList();
+    for (var r = 0; r < rows.length; r++) {
+      final row = rows[r];
+      final colNames = row.map((s) => s.toLowerCase().trim()).toList();
 
       if (colNames.any((c) => c.contains('customer') || c.contains('name') || c.contains('client'))) {
         headerRowIndex = r;
@@ -455,7 +456,7 @@ class ExcelImportExportService {
 
     if (headerRowIndex == -1 || !headerMap.containsKey('name')) {
       throw Exception(
-        'Could not find valid column headers in the Excel file. Please use the downloadable template.',
+        'Could not find valid column headers in the file. Please ensure column headers include "Customer Name", "Phone", "GSTIN", and "Address".',
       );
     }
 
@@ -465,29 +466,29 @@ class ExcelImportExportService {
     final errors = <String>[];
     int processedDataRows = 0;
 
-    for (var r = headerRowIndex + 1; r < sheet.rows.length; r++) {
-      final row = sheet.rows[r];
-      if (row.every((cell) => _cellString(cell).isEmpty)) continue;
+    for (var r = headerRowIndex + 1; r < rows.length; r++) {
+      final row = rows[r];
+      if (row.every((cell) => cell.trim().isEmpty)) continue;
 
       processedDataRows++;
       final rowNum = r + 1;
 
       try {
-        final name = _cellString(_cellAt(row, headerMap['name']));
+        final name = _strAt(row, headerMap['name']);
         if (name.length < 2) {
           errors.add('Row $rowNum: Customer name is required (min 2 characters).');
           continue;
         }
 
-        final rawPhone = _cellString(_cellAt(row, headerMap['phone']));
+        final rawPhone = _strAt(row, headerMap['phone']);
         final phoneError = validateOptionalMobileNumber(rawPhone);
         if (phoneError != null) {
           errors.add('Row $rowNum ("$name"): $phoneError');
           continue;
         }
 
-        final rawGstin = _cellString(_cellAt(row, headerMap['gstin'])).toUpperCase();
-        final rawAddress = _cellString(_cellAt(row, headerMap['address']));
+        final rawGstin = _strAt(row, headerMap['gstin']).toUpperCase();
+        final rawAddress = _strAt(row, headerMap['address']);
 
         Customer? existing;
         if (rawPhone.isNotEmpty) {
@@ -528,12 +529,290 @@ class ExcelImportExportService {
   }
 
   // ===========================================================================
+  // TABLE DECODING (STANDARD EXCEL + RAW XML FALLBACK + CSV)
+  // ===========================================================================
+
+  List<List<String>> _decodeTableRows(
+    Uint8List bytes, {
+    String? fileName,
+    String? targetType,
+  }) {
+    if (bytes.isEmpty) {
+      throw Exception('The selected file is empty.');
+    }
+
+    final isZip = bytes.length >= 4 &&
+        bytes[0] == 0x50 &&
+        bytes[1] == 0x4B &&
+        bytes[2] == 0x03 &&
+        bytes[3] == 0x04;
+    final isCsvNamed = fileName != null &&
+        (fileName.toLowerCase().endsWith('.csv') ||
+            fileName.toLowerCase().endsWith('.txt') ||
+            fileName.toLowerCase().endsWith('.tsv'));
+
+    if (!isZip || isCsvNamed) {
+      try {
+        final rows = _parseCsv(bytes);
+        if (rows.isNotEmpty) return rows;
+      } catch (_) {
+        if (isCsvNamed) rethrow;
+      }
+    }
+
+    if (isZip) {
+      // 1. Try standard Excel decoder
+      try {
+        final excel = Excel.decodeBytes(bytes);
+        if (excel.tables.isNotEmpty) {
+          Sheet? sheet;
+          final target = targetType?.toLowerCase();
+          if (target != null) {
+            for (final entry in excel.tables.entries) {
+              final name = entry.key.toLowerCase();
+              if (name.contains(target) && entry.value.rows.isNotEmpty) {
+                sheet = entry.value;
+                break;
+              }
+            }
+          }
+          sheet ??= excel.tables.values.where((s) => s.rows.isNotEmpty).firstOrNull;
+          if (sheet != null && sheet.rows.isNotEmpty) {
+            final rows = <List<String>>[];
+            for (final r in sheet.rows) {
+              rows.add(r.map(_cellString).toList());
+            }
+            if (rows.isNotEmpty) return rows;
+          }
+        }
+      } catch (_) {
+        // Standard Excel library failed (e.g. Null check operator on styles).
+        // Fall back to robust raw XML parser below.
+      }
+
+      // 2. Fall back to robust raw XML archive parser
+      try {
+        final rows = _decodeXlsxArchive(bytes);
+        if (rows.isNotEmpty) return rows;
+      } catch (_) {
+        // Fall through to CSV attempt
+      }
+    }
+
+    // 3. Fall back to CSV decoding
+    try {
+      final rows = _parseCsv(bytes);
+      if (rows.isNotEmpty) return rows;
+    } catch (_) {}
+
+    throw Exception(
+      'Could not read this spreadsheet file. Please ensure it is a valid .xlsx or .csv file.',
+    );
+  }
+
+  int _colIndexFromRef(String ref) {
+    int col = 0;
+    for (int i = 0; i < ref.length; i++) {
+      final code = ref.codeUnitAt(i);
+      if (code >= 65 && code <= 90) {
+        col = col * 26 + (code - 64);
+      } else if (code >= 97 && code <= 122) {
+        col = col * 26 + (code - 96);
+      } else {
+        break;
+      }
+    }
+    return col > 0 ? col - 1 : 0;
+  }
+
+  List<List<String>> _decodeXlsxArchive(Uint8List bytes) {
+    final archive = ZipDecoder().decodeBytes(bytes);
+    final sharedStrings = <String>[];
+    final ssFile = archive.findFile('xl/sharedStrings.xml');
+    if (ssFile != null) {
+      final rawBytes = ssFile.content as List<int>;
+      final content = utf8.decode(rawBytes, allowMalformed: true);
+      final doc = XmlDocument.parse(content);
+      for (final si in doc.findAllElements('si')) {
+        final buffer = StringBuffer();
+        for (final t in si.findAllElements('t')) {
+          buffer.write(t.innerText);
+        }
+        sharedStrings.add(buffer.toString());
+      }
+    }
+
+    final sheetFiles = archive.files
+        .where((f) => f.name.startsWith('xl/worksheets/sheet') && f.name.endsWith('.xml'))
+        .toList();
+    if (sheetFiles.isEmpty) {
+      throw Exception('The selected Excel file contains no worksheets.');
+    }
+
+    sheetFiles.sort((a, b) => a.name.compareTo(b.name));
+    final sheetFile = sheetFiles.first;
+
+    final sheetRaw = sheetFile.content as List<int>;
+    final sheetContent = utf8.decode(sheetRaw, allowMalformed: true);
+    final sheetDoc = XmlDocument.parse(sheetContent);
+    final rows = <List<String>>[];
+
+    for (final rowElem in sheetDoc.findAllElements('row')) {
+      final rowList = <String>[];
+      for (final cellElem in rowElem.findElements('c')) {
+        final cellRef = cellElem.getAttribute('r') ?? '';
+        final colIdx = _colIndexFromRef(cellRef);
+        final type = cellElem.getAttribute('t');
+
+        String cellVal = '';
+        if (type == 's') {
+          final vElem = cellElem.findElements('v').firstOrNull;
+          if (vElem != null) {
+            final idx = int.tryParse(vElem.innerText.trim());
+            if (idx != null && idx >= 0 && idx < sharedStrings.length) {
+              cellVal = sharedStrings[idx];
+            }
+          }
+        } else if (type == 'inlineStr') {
+          final tElem = cellElem.findAllElements('t').firstOrNull;
+          cellVal = tElem?.innerText ?? '';
+        } else {
+          final vElem = cellElem.findElements('v').firstOrNull;
+          cellVal = vElem?.innerText.trim() ?? '';
+        }
+
+        while (rowList.length <= colIdx) {
+          rowList.add('');
+        }
+        rowList[colIdx] = cellVal;
+      }
+      if (rowList.any((c) => c.trim().isNotEmpty)) {
+        rows.add(rowList);
+      }
+    }
+    return rows;
+  }
+
+  List<List<String>> _parseCsv(Uint8List bytes) {
+    String text;
+    try {
+      text = utf8.decode(bytes);
+    } catch (_) {
+      try {
+        text = latin1.decode(bytes);
+      } catch (_) {
+        throw Exception('Could not decode CSV text content.');
+      }
+    }
+
+    if (text.startsWith('\uFEFF')) {
+      text = text.substring(1);
+    }
+
+    String delimiter = ',';
+    final firstLine = text.split(RegExp(r'\r\n|\r|\n')).firstOrNull ?? '';
+    final commaCount = ','.allMatches(firstLine).length;
+    final semicolonCount = ';'.allMatches(firstLine).length;
+    final tabCount = '\t'.allMatches(firstLine).length;
+    if (semicolonCount > commaCount && semicolonCount > tabCount) {
+      delimiter = ';';
+    } else if (tabCount > commaCount && tabCount > semicolonCount) {
+      delimiter = '\t';
+    }
+
+    final rows = <List<String>>[];
+    final currentRow = <String>[];
+    final currentField = StringBuffer();
+    bool inQuotes = false;
+    int i = 0;
+
+    while (i < text.length) {
+      final char = text[i];
+
+      if (inQuotes) {
+        if (char == '"') {
+          if (i + 1 < text.length && text[i + 1] == '"') {
+            currentField.write('"');
+            i += 2;
+            continue;
+          } else {
+            inQuotes = false;
+            i++;
+            continue;
+          }
+        } else {
+          currentField.write(char);
+          i++;
+          continue;
+        }
+      } else {
+        if (char == '"') {
+          inQuotes = true;
+          i++;
+          continue;
+        } else if (char == delimiter) {
+          currentRow.add(currentField.toString().trim());
+          currentField.clear();
+          i++;
+          continue;
+        } else if (char == '\r') {
+          if (i + 1 < text.length && text[i + 1] == '\n') {
+            i++;
+          }
+          currentRow.add(currentField.toString().trim());
+          currentField.clear();
+          if (currentRow.any((c) => c.isNotEmpty)) {
+            rows.add(List<String>.from(currentRow));
+          }
+          currentRow.clear();
+          i++;
+          continue;
+        } else if (char == '\n') {
+          currentRow.add(currentField.toString().trim());
+          currentField.clear();
+          if (currentRow.any((c) => c.isNotEmpty)) {
+            rows.add(List<String>.from(currentRow));
+          }
+          currentRow.clear();
+          i++;
+          continue;
+        } else {
+          currentField.write(char);
+          i++;
+        }
+      }
+    }
+
+    if (currentField.isNotEmpty || currentRow.isNotEmpty) {
+      currentRow.add(currentField.toString().trim());
+      if (currentRow.any((c) => c.isNotEmpty)) {
+        rows.add(List<String>.from(currentRow));
+      }
+    }
+
+    return rows;
+  }
+
+  // ===========================================================================
   // HELPERS
   // ===========================================================================
 
-  Data? _cellAt(List<Data?> row, int? colIndex) {
+  String _strAt(List<String> row, int? colIndex) {
+    if (colIndex == null || colIndex < 0 || colIndex >= row.length) return '';
+    return row[colIndex].trim();
+  }
+
+  double? _doubleAt(List<String> row, int? colIndex) {
     if (colIndex == null || colIndex < 0 || colIndex >= row.length) return null;
-    return row[colIndex];
+    final s = row[colIndex]
+        .replaceAll(',', '')
+        .replaceAll('Rs.', '')
+        .replaceAll('Rs', '')
+        .replaceAll('₹', '')
+        .replaceAll('%', '')
+        .replaceAll('/', '')
+        .trim();
+    return double.tryParse(s);
   }
 
   String _cellString(Data? cell) {
@@ -573,27 +852,6 @@ class ExcelImportExportService {
     }
   }
 
-  double? _cellDouble(Data? cell) {
-    if (cell == null) return null;
-    try {
-      final v = cell.value;
-      if (v == null) return null;
-      if (v is DoubleCellValue) return v.value;
-      if (v is IntCellValue) return v.value.toDouble();
-      final s = _cellString(cell)
-          .replaceAll(',', '')
-          .replaceAll('Rs.', '')
-          .replaceAll('Rs', '')
-          .replaceAll('₹', '')
-          .replaceAll('%', '')
-          .replaceAll('/', '')
-          .trim();
-      return double.tryParse(s);
-    } catch (_) {
-      return null;
-    }
-  }
-
   Future<void> _share(Uint8List bytes, String fileName, String title, String text) async {
     if (shareHandler != null) {
       await shareHandler!(bytes, fileName, title, text);
@@ -606,7 +864,9 @@ class ExcelImportExportService {
         files: [
           XFile.fromData(
             bytes,
-            mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            mimeType: fileName.endsWith('.csv')
+                ? 'text/csv'
+                : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
           ),
         ],
         fileNameOverrides: [fileName],
