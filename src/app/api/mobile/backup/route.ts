@@ -63,19 +63,90 @@ function hashPayload(payload: Record<string, unknown>) {
 export async function GET(request: Request) {
   try {
     const { customerId, supabase } = await authorize(request);
-    const { data, error } = await supabase
-      .from("mobile_backup_runs")
-      .select("entity_type, received_count, inserted_count, updated_count, unchanged_count, completed_at")
-      .eq("customer_id", customerId)
-      .order("completed_at", { ascending: false })
-      .limit(30);
-    if (error) throw new Error(error.message);
+    const url = new URL(request.url);
+    const entity = url.searchParams.get("entity");
+    const download = url.searchParams.get("download") === "1";
+
+    if (download && entity) {
+      if (!["products", "customers", "invoices"].includes(entity)) {
+        return json("Unsupported entity type for download.", 400);
+      }
+      const limit = Math.min(Math.max(1, parseInt(url.searchParams.get("limit") || "500", 10)), 1000);
+      const offset = Math.max(0, parseInt(url.searchParams.get("offset") || "0", 10));
+      const fromDate = url.searchParams.get("fromDate");
+      const toDate = url.searchParams.get("toDate");
+
+      let query = supabase
+        .from("mobile_backup_records")
+        .select("local_id, payload, local_updated_at", { count: "exact" })
+        .eq("customer_id", customerId)
+        .eq("entity_type", entity);
+
+      if (fromDate) {
+        query = query.gte("local_updated_at", fromDate);
+      }
+      if (toDate) {
+        query = query.lte("local_updated_at", toDate);
+      }
+
+      query = query
+        .order("local_updated_at", { ascending: true })
+        .range(offset, offset + limit - 1);
+
+      const { data, count, error } = await query;
+      if (error) throw new Error(error.message);
+
+      const total = count ?? data?.length ?? 0;
+      return Response.json(
+        {
+          ok: true,
+          entity,
+          records: (data ?? []).map((row) => ({
+            localId: row.local_id,
+            updatedAt: row.local_updated_at,
+            payload: row.payload,
+          })),
+          totalCount: total,
+          offset,
+          hasMore: offset + (data?.length ?? 0) < total,
+        },
+        { headers: { "Cache-Control": "no-store" } },
+      );
+    }
+
+    const [runsResult, recordsResult] = await Promise.all([
+      supabase
+        .from("mobile_backup_runs")
+        .select("entity_type, received_count, inserted_count, updated_count, unchanged_count, completed_at")
+        .eq("customer_id", customerId)
+        .order("completed_at", { ascending: false })
+        .limit(30),
+      supabase
+        .from("mobile_backup_records")
+        .select("entity_type")
+        .eq("customer_id", customerId),
+    ]);
+
+    if (runsResult.error) throw new Error(runsResult.error.message);
+
     const latest = new Map<string, unknown>();
-    for (const row of data ?? []) {
+    for (const row of runsResult.data ?? []) {
       if (!latest.has(row.entity_type)) latest.set(row.entity_type, row);
     }
+
+    const counts = { products: 0, customers: 0, invoices: 0 };
+    for (const row of recordsResult.data ?? []) {
+      if (row.entity_type in counts) {
+        counts[row.entity_type as keyof typeof counts]++;
+      }
+    }
+
     return Response.json(
-      { ok: true, lastBackups: Object.fromEntries(latest) },
+      {
+        ok: true,
+        lastBackups: Object.fromEntries(latest),
+        counts,
+      },
       { headers: { "Cache-Control": "no-store" } },
     );
   } catch (error) {

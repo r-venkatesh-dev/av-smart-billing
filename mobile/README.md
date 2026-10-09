@@ -14,10 +14,10 @@ Android-first, offline billing companion for AV Smartbilling. Products, customer
 - Paired Bluetooth thermal printing with 58 mm and 80 mm receipt layouts
 - Date-range sales reports with CSV, Excel and PDF exports
 - Optional PIN and fingerprint app lock
-- Incremental, per-entity cloud push for products, customers and invoices
+- Incremental, per-entity cloud push and restore for products, customers and invoices
 - Business and GST identity settings
 
-Cloud restore and multi-device synchronization remain intentionally outside this milestone. The restore screen is included as a disabled preview for a later phase.
+Cloud backup and restore allow moving data smoothly across mobile devices using the active license. Multi-device concurrent synchronization remains for an upcoming phase.
 
 The selected master artwork for the Android launcher icon is stored at
 `assets/branding/app-logo.png`. Android density and

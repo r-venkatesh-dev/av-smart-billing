@@ -539,6 +539,417 @@ class AppDatabase {
     }
   }
 
+  Future<RestoreReport> restoreCloudRecords(
+    String entity,
+    List<Map<String, dynamic>> records,
+  ) async {
+    return db.transaction((txn) async {
+      switch (entity) {
+        case 'products':
+          var inserted = 0;
+          var updated = 0;
+          for (final raw in records) {
+            final id = raw['id'] as String;
+            final name = raw['name'] as String;
+            final sku = (raw['sku'] as String).trim();
+            final barcode = (raw['barcode'] as String?)?.trim();
+            final unit = (raw['unit'] as String?)?.trim() ?? 'unit';
+            final priceInPaise = (raw['price_in_paise'] as num).toInt();
+            final taxRateBasisPoints =
+                (raw['tax_rate_basis_points'] as num? ?? 0).toInt();
+            final discountPercent =
+                (raw['discount_percent'] as num? ?? 0).toDouble();
+            final stockQuantity =
+                (raw['stock_quantity'] as num? ?? 0).toDouble();
+            final active = (raw['active'] as num? ?? 1).toInt();
+            final createdAt =
+                raw['created_at'] as String? ?? DateTime.now().toIso8601String();
+            final updatedAt =
+                raw['updated_at'] as String? ?? DateTime.now().toIso8601String();
+
+            final existing = await txn.query(
+              'products',
+              where: 'id=?',
+              whereArgs: [id],
+              limit: 1,
+            );
+
+            if (existing.isNotEmpty) {
+              await txn.update(
+                'products',
+                {
+                  'name': name,
+                  'sku': sku,
+                  'barcode': barcode?.isNotEmpty == true ? barcode : null,
+                  'unit': unit,
+                  'price_in_paise': priceInPaise,
+                  'tax_rate_basis_points': taxRateBasisPoints,
+                  'discount_percent': discountPercent,
+                  'stock_quantity': stockQuantity,
+                  'active': active,
+                  'updated_at': updatedAt,
+                },
+                where: 'id=?',
+                whereArgs: [id],
+              );
+              updated++;
+            } else {
+              final conflict = await txn.query(
+                'products',
+                where:
+                    'sku=? or (barcode is not null and barcode != "" and barcode=?)',
+                whereArgs: [sku, barcode ?? ''],
+                limit: 1,
+              );
+              if (conflict.isNotEmpty) {
+                final conflictId = conflict.first['id'] as String;
+                await txn.update(
+                  'products',
+                  {
+                    'name': name,
+                    'sku': sku,
+                    'barcode': barcode?.isNotEmpty == true ? barcode : null,
+                    'unit': unit,
+                    'price_in_paise': priceInPaise,
+                    'tax_rate_basis_points': taxRateBasisPoints,
+                    'discount_percent': discountPercent,
+                    'stock_quantity': stockQuantity,
+                    'active': active,
+                    'updated_at': updatedAt,
+                  },
+                  where: 'id=?',
+                  whereArgs: [conflictId],
+                );
+                updated++;
+              } else {
+                await txn.insert('products', {
+                  'id': id,
+                  'name': name,
+                  'sku': sku,
+                  'barcode': barcode?.isNotEmpty == true ? barcode : null,
+                  'unit': unit,
+                  'price_in_paise': priceInPaise,
+                  'tax_rate_basis_points': taxRateBasisPoints,
+                  'discount_percent': discountPercent,
+                  'stock_quantity': stockQuantity,
+                  'active': active,
+                  'created_at': createdAt,
+                  'updated_at': updatedAt,
+                });
+                inserted++;
+              }
+            }
+          }
+          return RestoreReport(
+            entity: entity,
+            inserted: inserted,
+            updated: updated,
+            total: records.length,
+          );
+
+        case 'customers':
+          var inserted = 0;
+          var updated = 0;
+          for (final raw in records) {
+            final id = raw['id'] as String;
+            final name = raw['name'] as String;
+            final phone = (raw['phone'] as String?)?.trim() ?? '';
+            final address = (raw['address'] as String?)?.trim() ?? '';
+            final gstin = (raw['gstin'] as String?)?.trim();
+            final createdAt =
+                raw['created_at'] as String? ?? DateTime.now().toIso8601String();
+            final updatedAt =
+                raw['updated_at'] as String? ?? DateTime.now().toIso8601String();
+
+            final existing = await txn.query(
+              'customers',
+              where: 'id=?',
+              whereArgs: [id],
+              limit: 1,
+            );
+
+            if (existing.isNotEmpty) {
+              await txn.update(
+                'customers',
+                {
+                  'name': name,
+                  'phone': phone,
+                  'address': address,
+                  'gstin': gstin?.isNotEmpty == true ? gstin : null,
+                  'updated_at': updatedAt,
+                },
+                where: 'id=?',
+                whereArgs: [id],
+              );
+              updated++;
+            } else {
+              await txn.insert('customers', {
+                'id': id,
+                'name': name,
+                'phone': phone,
+                'address': address,
+                'gstin': gstin?.isNotEmpty == true ? gstin : null,
+                'created_at': createdAt,
+                'updated_at': updatedAt,
+              });
+              inserted++;
+            }
+          }
+          return RestoreReport(
+            entity: entity,
+            inserted: inserted,
+            updated: updated,
+            total: records.length,
+          );
+
+        case 'invoices':
+          var inserted = 0;
+          var updated = 0;
+          var maxInvoiceNum = 0;
+
+          for (final raw in records) {
+            final id = raw['id'] as String;
+            final invoiceNumber = raw['invoice_number'] as String;
+            final customerId = raw['customer_id'] as String?;
+            final customerName =
+                raw['customer_name'] as String? ?? 'Walk-in Customer';
+            final customerPhone = (raw['customer_phone'] as String?) ?? '';
+            final customerAddress = (raw['customer_address'] as String?) ?? '';
+            final customerGstin = raw['customer_gstin'] as String?;
+            final issuedAt = raw['issued_at'] as String;
+            final status = raw['status'] as String? ?? 'PAID';
+            final subtotalInPaise = (raw['subtotal_in_paise'] as num).toInt();
+            final discountInPaise =
+                (raw['discount_in_paise'] as num? ?? 0).toInt();
+            final lineDiscountInPaise =
+                (raw['line_discount_in_paise'] as num? ?? discountInPaise).toInt();
+            final overallDiscountPercent =
+                (raw['overall_discount_percent'] as num? ?? 0).toDouble();
+            final overallDiscountInPaise =
+                (raw['overall_discount_in_paise'] as num? ?? 0).toInt();
+            final taxInPaise = (raw['tax_in_paise'] as num).toInt();
+            final totalInPaise = (raw['total_in_paise'] as num).toInt();
+            final paymentMethod = raw['payment_method'] as String? ?? 'CASH';
+            final createdAt = raw['created_at'] as String? ?? issuedAt;
+
+            final match = RegExp(r'(\d+)$').firstMatch(invoiceNumber);
+            if (match != null) {
+              final parsedNum = int.tryParse(match.group(1)!) ?? 0;
+              if (parsedNum > maxInvoiceNum) maxInvoiceNum = parsedNum;
+            }
+
+            if (customerId != null && customerId.isNotEmpty) {
+              final custExists = await txn.query(
+                'customers',
+                where: 'id=?',
+                whereArgs: [customerId],
+                limit: 1,
+              );
+              if (custExists.isEmpty) {
+                await txn.insert('customers', {
+                  'id': customerId,
+                  'name': customerName,
+                  'phone': customerPhone,
+                  'address': customerAddress,
+                  'gstin': customerGstin,
+                  'created_at': createdAt,
+                  'updated_at': createdAt,
+                });
+              }
+            }
+
+            final rawItems = raw['items'] as List<dynamic>? ?? [];
+
+            for (final itemRaw in rawItems) {
+              final item = itemRaw as Map<String, dynamic>;
+              final productId = item['product_id'] as String;
+              final prodExists = await txn.query(
+                'products',
+                where: 'id=?',
+                whereArgs: [productId],
+                limit: 1,
+              );
+              if (prodExists.isEmpty) {
+                await txn.insert('products', {
+                  'id': productId,
+                  'name': item['description'] as String? ?? 'Item',
+                  'sku': item['sku'] as String? ?? productId.substring(0, 8),
+                  'barcode': null,
+                  'unit': item['unit'] as String? ?? 'unit',
+                  'price_in_paise':
+                      (item['unit_price_in_paise'] as num? ?? 0).toInt(),
+                  'tax_rate_basis_points':
+                      (item['tax_rate_basis_points'] as num? ?? 0).toInt(),
+                  'discount_percent':
+                      (item['discount_percent'] as num? ?? 0).toDouble(),
+                  'stock_quantity': 0,
+                  'active': 0,
+                  'created_at': createdAt,
+                  'updated_at': createdAt,
+                });
+              }
+            }
+
+            String targetInvoiceId;
+            final existing = await txn.query(
+              'invoices',
+              where: 'id=?',
+              whereArgs: [id],
+              limit: 1,
+            );
+
+            if (existing.isNotEmpty) {
+              targetInvoiceId = id;
+              await txn.delete(
+                'invoice_items',
+                where: 'invoice_id=?',
+                whereArgs: [id],
+              );
+              await txn.update(
+                'invoices',
+                {
+                  'invoice_number': invoiceNumber,
+                  'customer_id': customerId,
+                  'customer_name': customerName,
+                  'customer_phone': customerPhone,
+                  'customer_address': customerAddress,
+                  'customer_gstin': customerGstin,
+                  'issued_at': issuedAt,
+                  'status': status,
+                  'subtotal_in_paise': subtotalInPaise,
+                  'discount_in_paise': discountInPaise,
+                  'line_discount_in_paise': lineDiscountInPaise,
+                  'overall_discount_percent': overallDiscountPercent,
+                  'overall_discount_in_paise': overallDiscountInPaise,
+                  'tax_in_paise': taxInPaise,
+                  'total_in_paise': totalInPaise,
+                  'payment_method': paymentMethod,
+                },
+                where: 'id=?',
+                whereArgs: [id],
+              );
+              updated++;
+            } else {
+              final conflict = await txn.query(
+                'invoices',
+                where: 'invoice_number=?',
+                whereArgs: [invoiceNumber],
+                limit: 1,
+              );
+              if (conflict.isNotEmpty) {
+                targetInvoiceId = conflict.first['id'] as String;
+                await txn.delete(
+                  'invoice_items',
+                  where: 'invoice_id=?',
+                  whereArgs: [targetInvoiceId],
+                );
+                await txn.update(
+                  'invoices',
+                  {
+                    'customer_id': customerId,
+                    'customer_name': customerName,
+                    'customer_phone': customerPhone,
+                    'customer_address': customerAddress,
+                    'customer_gstin': customerGstin,
+                    'issued_at': issuedAt,
+                    'status': status,
+                    'subtotal_in_paise': subtotalInPaise,
+                    'discount_in_paise': discountInPaise,
+                    'line_discount_in_paise': lineDiscountInPaise,
+                    'overall_discount_percent': overallDiscountPercent,
+                    'overall_discount_in_paise': overallDiscountInPaise,
+                    'tax_in_paise': taxInPaise,
+                    'total_in_paise': totalInPaise,
+                    'payment_method': paymentMethod,
+                  },
+                  where: 'id=?',
+                  whereArgs: [targetInvoiceId],
+                );
+                updated++;
+              } else {
+                targetInvoiceId = id;
+                await txn.insert('invoices', {
+                  'id': id,
+                  'invoice_number': invoiceNumber,
+                  'customer_id': customerId,
+                  'customer_name': customerName,
+                  'customer_phone': customerPhone,
+                  'customer_address': customerAddress,
+                  'customer_gstin': customerGstin,
+                  'issued_at': issuedAt,
+                  'status': status,
+                  'subtotal_in_paise': subtotalInPaise,
+                  'discount_in_paise': discountInPaise,
+                  'line_discount_in_paise': lineDiscountInPaise,
+                  'overall_discount_percent': overallDiscountPercent,
+                  'overall_discount_in_paise': overallDiscountInPaise,
+                  'tax_in_paise': taxInPaise,
+                  'total_in_paise': totalInPaise,
+                  'payment_method': paymentMethod,
+                  'created_at': createdAt,
+                });
+                inserted++;
+              }
+            }
+
+            for (final itemRaw in rawItems) {
+              final item = itemRaw as Map<String, dynamic>;
+              await txn.insert('invoice_items', {
+                'id': item['id'] as String? ?? const Uuid().v4(),
+                'invoice_id': targetInvoiceId,
+                'product_id': item['product_id'] as String,
+                'description': item['description'] as String,
+                'sku': item['sku'] as String,
+                'unit': item['unit'] as String? ?? 'unit',
+                'quantity': (item['quantity'] as num).toDouble(),
+                'unit_price_in_paise':
+                    (item['unit_price_in_paise'] as num).toInt(),
+                'tax_rate_basis_points':
+                    (item['tax_rate_basis_points'] as num? ?? 0).toInt(),
+                'discount_percent':
+                    (item['discount_percent'] as num? ?? 0).toDouble(),
+                'discount_in_paise':
+                    (item['discount_in_paise'] as num? ?? 0).toInt(),
+                'taxable_in_paise': (item['taxable_in_paise'] as num).toInt(),
+                'tax_in_paise': (item['tax_in_paise'] as num).toInt(),
+              });
+            }
+          }
+
+          if (maxInvoiceNum > 0) {
+            final biz = await txn.query(
+              'business',
+              where: 'id=?',
+              whereArgs: ['local-business'],
+              limit: 1,
+            );
+            if (biz.isNotEmpty) {
+              final currentNext =
+                  (biz.first['next_invoice_number'] as num? ?? 1).toInt();
+              if (maxInvoiceNum >= currentNext) {
+                await txn.update(
+                  'business',
+                  {'next_invoice_number': maxInvoiceNum + 1},
+                  where: 'id=?',
+                  whereArgs: ['local-business'],
+                );
+              }
+            }
+          }
+
+          return RestoreReport(
+            entity: entity,
+            inserted: inserted,
+            updated: updated,
+            total: records.length,
+          );
+
+        default:
+          throw ArgumentError.value(entity, 'entity', 'Unsupported restore type');
+      }
+    });
+  }
+
   Future<String> createInvoice({
     Customer? customer,
     required String walkInName,

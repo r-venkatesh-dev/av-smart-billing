@@ -25,6 +25,16 @@ class CloudBackupResult {
   final DateTime backedUpAt;
 }
 
+class CloudBackupSummary {
+  const CloudBackupSummary({
+    required this.lastBackups,
+    required this.counts,
+  });
+
+  final Map<String, DateTime> lastBackups;
+  final Map<String, int> counts;
+}
+
 class CloudBackupService {
   CloudBackupService({http.Client? client}) : _client = client ?? http.Client();
 
@@ -34,10 +44,11 @@ class CloudBackupService {
   );
   final http.Client _client;
 
-  Future<Map<String, DateTime>> status(String token) async {
+  Future<CloudBackupSummary> fetchSummary(String token) async {
     final payload = await _request('GET', token);
     final statuses = payload['lastBackups'] as Map<String, dynamic>? ?? {};
-    return statuses.map(
+    final rawCounts = payload['counts'] as Map<String, dynamic>? ?? {};
+    final lastBackups = statuses.map(
       (key, value) => MapEntry(
         key,
         DateTime.parse(
@@ -45,6 +56,61 @@ class CloudBackupService {
         ),
       ),
     );
+    final counts = rawCounts.map(
+      (key, value) => MapEntry(key, (value as num).toInt()),
+    );
+    return CloudBackupSummary(lastBackups: lastBackups, counts: counts);
+  }
+
+  Future<Map<String, DateTime>> status(String token) async {
+    final summary = await fetchSummary(token);
+    return summary.lastBackups;
+  }
+
+  Future<List<Map<String, dynamic>>> pullRecords({
+    required String token,
+    required String entity,
+    DateTime? fromDate,
+    DateTime? toDate,
+  }) async {
+    final allRecords = <Map<String, dynamic>>[];
+    var offset = 0;
+    const limit = 500;
+    var hasMore = true;
+
+    while (hasMore) {
+      final queryParams = <String, String>{
+        'download': '1',
+        'entity': entity,
+        'limit': limit.toString(),
+        'offset': offset.toString(),
+      };
+      if (fromDate != null) {
+        queryParams['fromDate'] = fromDate.toUtc().toIso8601String();
+      }
+      if (toDate != null) {
+        queryParams['toDate'] = toDate.toUtc().toIso8601String();
+      }
+
+      final payload = await _request(
+        'GET',
+        token,
+        queryParams: queryParams,
+      );
+
+      final rawList = payload['records'] as List<dynamic>? ?? [];
+      for (final item in rawList) {
+        final map = item as Map<String, dynamic>;
+        final payloadData = map['payload'] as Map<String, dynamic>;
+        allRecords.add(payloadData);
+      }
+
+      hasMore = payload['hasMore'] as bool? ?? false;
+      offset += rawList.length;
+      if (rawList.isEmpty) break;
+    }
+
+    return allRecords;
   }
 
   Future<CloudBackupResult> push({
@@ -95,8 +161,12 @@ class CloudBackupService {
     String method,
     String token, {
     Map<String, Object?>? body,
+    Map<String, String>? queryParams,
   }) async {
-    final uri = Uri.parse('$_apiUrl/api/mobile/backup');
+    var uri = Uri.parse('$_apiUrl/api/mobile/backup');
+    if (queryParams != null && queryParams.isNotEmpty) {
+      uri = uri.replace(queryParameters: queryParams);
+    }
     final headers = {
       'Authorization': 'Bearer $token',
       'Content-Type': 'application/json',

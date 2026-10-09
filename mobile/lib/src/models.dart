@@ -266,3 +266,17 @@ class SalesReport {
     return totals;
   }
 }
+
+class RestoreReport {
+  const RestoreReport({
+    required this.entity,
+    required this.inserted,
+    required this.updated,
+    required this.total,
+  });
+
+  final String entity;
+  final int inserted;
+  final int updated;
+  final int total;
+}

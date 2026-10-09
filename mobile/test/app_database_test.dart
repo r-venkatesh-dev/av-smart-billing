@@ -464,4 +464,96 @@ void main() {
     expect(await migrated.heldBills(), isEmpty);
     await migrated.close();
   });
+
+  test('restores products, customers and invoices from cloud backup', () async {
+    // 1. Restore products
+    final productReport = await database.restoreCloudRecords('products', [
+      {
+        'id': 'p-cloud-1',
+        'name': 'Cloud Sugar',
+        'sku': 'SUGAR-1KG',
+        'barcode': '8901234567890',
+        'unit': 'kg',
+        'price_in_paise': 4500,
+        'tax_rate_basis_points': 500,
+        'discount_percent': 0.0,
+        'stock_quantity': 50.0,
+        'active': 1,
+        'created_at': '2026-09-01T10:00:00.000Z',
+        'updated_at': '2026-09-01T10:00:00.000Z',
+      },
+    ]);
+    expect(productReport.inserted, 1);
+    expect(productReport.total, 1);
+
+    final prods = await database.products();
+    expect(prods.single.name, 'Cloud Sugar');
+    expect(prods.single.stockQuantity, 50.0);
+
+    // 2. Restore customers
+    final customerReport = await database.restoreCloudRecords('customers', [
+      {
+        'id': 'c-cloud-1',
+        'name': 'Rahul Sharma',
+        'phone': '9876543210',
+        'address': 'Main Bazaar',
+        'gstin': '33AAAAA0000A1Z5',
+        'created_at': '2026-09-01T10:00:00.000Z',
+        'updated_at': '2026-09-01T10:00:00.000Z',
+      },
+    ]);
+    expect(customerReport.inserted, 1);
+    final customers = await database.customers();
+    expect(customers.single.name, 'Rahul Sharma');
+
+    // 3. Restore invoices with items
+    final invoiceReport = await database.restoreCloudRecords('invoices', [
+      {
+        'id': 'inv-cloud-1',
+        'invoice_number': 'INV-000025',
+        'customer_id': 'c-cloud-1',
+        'customer_name': 'Rahul Sharma',
+        'customer_phone': '9876543210',
+        'customer_address': 'Main Bazaar',
+        'customer_gstin': '33AAAAA0000A1Z5',
+        'issued_at': '2026-09-02T11:00:00.000Z',
+        'status': 'PAID',
+        'subtotal_in_paise': 4500,
+        'discount_in_paise': 0,
+        'line_discount_in_paise': 0,
+        'overall_discount_percent': 0,
+        'overall_discount_in_paise': 0,
+        'tax_in_paise': 225,
+        'total_in_paise': 4725,
+        'payment_method': 'UPI',
+        'created_at': '2026-09-02T11:00:00.000Z',
+        'items': [
+          {
+            'id': 'item-cloud-1',
+            'invoice_id': 'inv-cloud-1',
+            'product_id': 'p-cloud-1',
+            'description': 'Cloud Sugar',
+            'sku': 'SUGAR-1KG',
+            'unit': 'kg',
+            'quantity': 1.0,
+            'unit_price_in_paise': 4500,
+            'tax_rate_basis_points': 500,
+            'discount_percent': 0.0,
+            'discount_in_paise': 0,
+            'taxable_in_paise': 4500,
+            'tax_in_paise': 225,
+          },
+        ],
+      },
+    ]);
+    expect(invoiceReport.inserted, 1);
+
+    final invoices = await database.invoices();
+    expect(invoices.single.invoiceNumber, 'INV-000025');
+    expect(invoices.single.totalInPaise, 4725);
+
+    // Business next_invoice_number should be updated to 26
+    final biz = await database.getBusiness();
+    expect(biz['next_invoice_number'], 26);
+  });
 }
