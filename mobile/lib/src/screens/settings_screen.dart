@@ -843,7 +843,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
               onPressed: () async {
                 Navigator.pop(sheetContext);
-                const url = 'https://av-smart-billing.vercel.app/subscribe';
+                final url = await widget.controller.licenses.getRenewalUrl(session);
                 final uri = Uri.parse(url);
                 if (await canLaunchUrl(uri)) {
                   await launchUrl(uri, mode: LaunchMode.externalApplication);

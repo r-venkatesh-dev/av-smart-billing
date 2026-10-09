@@ -75,6 +75,20 @@ class LicenseService {
     return _saveResponse(response);
   }
 
+  Future<String> getRenewalUrl(LicenseSession current) async {
+    try {
+      final response = await _post('/api/license/renewal-session', {
+        'deviceId': current.deviceId,
+        'deviceFingerprint': await _fingerprint(),
+      });
+      final renewalUrl = response['renewalUrl'] as String?;
+      if (renewalUrl != null && renewalUrl.isNotEmpty) {
+        return renewalUrl;
+      }
+    } catch (_) {}
+    return '$_apiUrl/renew';
+  }
+
   Future<Map<String, dynamic>> _post(
     String path,
     Map<String, Object?> body,
