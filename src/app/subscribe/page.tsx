@@ -1,6 +1,7 @@
 import { SubscriptionCheckout } from "@/app/subscribe/subscription-checkout";
 import { PublicSite } from "@/components/public-site";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { normalizePlanOffers } from "@/lib/discounts";
 
 export const metadata = { title: "Purchase activation key" };
 export const dynamic = "force-dynamic";
@@ -30,6 +31,11 @@ export default async function SubscribePage({ searchParams }: PageProps<"/subscr
         purchasable: plan.status === "ACTIVE",
         newUserDiscountType: ((plan as Record<string, unknown>).new_user_discount_type || "NONE") as "NONE" | "FLAT" | "PERCENTAGE",
         newUserDiscountValue: Number((plan as Record<string, unknown>).new_user_discount_value ?? 0),
+        offers: normalizePlanOffers(
+          (plan as Record<string, unknown>).offers,
+          (plan as Record<string, unknown>).new_user_discount_type as string,
+          Number((plan as Record<string, unknown>).new_user_discount_value ?? 0),
+        ),
       }));
 
   const initialPlanId = typeof requestedPlan === "string" && plans.some((plan) => plan.id === requestedPlan && plan.purchasable) ? requestedPlan : undefined;

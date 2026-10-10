@@ -969,9 +969,6 @@ class AppDatabase {
     if (customer == null) {
       final phoneError = validateOptionalMobileNumber(walkInPhone);
       if (phoneError != null) throw Exception(phoneError);
-      if (saveWalkInCustomer && walkInPhone.trim().isEmpty) {
-        throw Exception('Enter mobile number to save this customer.');
-      }
       if (saveWalkInCustomer &&
           walkInName.trim().toLowerCase() == 'walk-in customer') {
         throw Exception('Enter the actual customer name.');
@@ -1035,12 +1032,19 @@ class AppDatabase {
       var invoiceCustomer = customer;
       if (invoiceCustomer == null && saveWalkInCustomer) {
         final cleanPhone = walkInPhone.trim();
-        final existing = await txn.query(
-          'customers',
-          where: 'phone=?',
-          whereArgs: [cleanPhone],
-          limit: 1,
-        );
+        final existing = cleanPhone.isNotEmpty
+            ? await txn.query(
+                'customers',
+                where: 'phone=?',
+                whereArgs: [cleanPhone],
+                limit: 1,
+              )
+            : await txn.query(
+                'customers',
+                where: 'name=?',
+                whereArgs: [walkInName.trim()],
+                limit: 1,
+              );
         if (existing.isNotEmpty) {
           invoiceCustomer = Customer.fromMap(existing.single);
         } else {

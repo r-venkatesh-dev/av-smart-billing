@@ -103,6 +103,7 @@ function planInput(formData: FormData) {
     status: formData.get("status"),
     newUserDiscountType: formData.get("newUserDiscountType") || "NONE",
     newUserDiscountValue: formData.get("newUserDiscountValue") || 0,
+    offers: formData.get("offersJson") || formData.get("offers") || "[]",
   });
 }
 
@@ -126,6 +127,7 @@ export async function createPlan(_state: EntityFormState, formData: FormData): P
     status: parsed.data.status,
     new_user_discount_type: parsed.data.newUserDiscountType,
     new_user_discount_value: parsed.data.newUserDiscountValue,
+    offers: parsed.data.offers,
   }).select().single();
   if (error) return { message: error.message };
   const audit = await supabase.from("audit_logs").insert({ actor_id: actor.id, action: "PLAN_CREATED", entity_type: "plan", entity_id: data.id, after_data: data });
@@ -157,6 +159,7 @@ export async function updatePlan(id: string, _state: EntityFormState, formData: 
     status: parsed.data.status,
     new_user_discount_type: parsed.data.newUserDiscountType,
     new_user_discount_value: parsed.data.newUserDiscountValue,
+    offers: parsed.data.offers,
   }).eq("id", id).select().single();
   if (error) return { message: error.message };
   await supabase.from("licenses").update({

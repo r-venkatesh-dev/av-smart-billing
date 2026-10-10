@@ -169,6 +169,8 @@ export function CustomerForm({
   );
 }
 
+import { PlanOffer } from "@/lib/discounts";
+
 export function PlanForm({
   plan,
 }: {
@@ -188,6 +190,7 @@ export function PlanForm({
     status: string;
     newUserDiscountType?: "NONE" | "FLAT" | "PERCENTAGE";
     newUserDiscountValue?: number;
+    offers?: PlanOffer[];
   };
 }) {
   const action = plan ? updatePlan.bind(null, plan.id) : createPlan;
@@ -198,21 +201,23 @@ export function PlanForm({
   const [priceInRupees, setPriceInRupees] = useState<number>(
     plan ? plan.priceInPaise / 100 : 0,
   );
-  const [discountType, setDiscountType] = useState<"NONE" | "FLAT" | "PERCENTAGE">(
-    plan?.newUserDiscountType ?? "NONE",
-  );
-  const [discountValue, setDiscountValue] = useState<number>(
-    plan?.newUserDiscountValue ?? 0,
-  );
 
+  const initialOffers: PlanOffer[] = plan?.offers && plan.offers.length > 0
+    ? plan.offers
+    : plan?.newUserDiscountType && plan.newUserDiscountType !== "NONE" && Number(plan.newUserDiscountValue) > 0
+      ? [
+          {
+            id: "welcome-offer",
+            name: "First-Time Owner Welcome Offer",
+            type: plan.newUserDiscountType === "PERCENTAGE" ? "PERCENTAGE" : "FLAT",
+            value: Number(plan.newUserDiscountValue),
+            isFirstTimeOnly: true,
+          },
+        ]
+      : [];
+
+  const [offers, setOffers] = useState<PlanOffer[]>(initialOffers);
   const basePrice = Number(priceInRupees) || 0;
-  let discountedPrice = basePrice;
-  if (discountType === "FLAT") {
-    discountedPrice = Math.max(0, basePrice - Number(discountValue || 0));
-  } else if (discountType === "PERCENTAGE") {
-    const pct = Math.min(100, Math.max(0, Number(discountValue || 0)));
-    discountedPrice = Math.max(0, basePrice - (basePrice * pct) / 100);
-  }
 
   return (
     <form action={formAction} className="surface space-y-5 p-6">
@@ -298,67 +303,168 @@ export function PlanForm({
           </select>
         </label>
 
-        {/* First-Time Customer Offer Section */}
+        {/* Dynamic Promotional Offers Section */}
         <div className="rounded-xl border border-[#dfe3eb] bg-[#f8fafc] p-4.5 sm:col-span-2 space-y-4">
-          <div>
-            <h3 className="text-sm font-bold text-[#1e293b]">First-Time Customer Discount (Optional)</h3>
-            <p className="mt-0.5 text-xs text-[#64748b]">
-              Give a special introductory discount for new shop owners when purchasing with an unregistered mobile number.
-            </p>
-          </div>
-
-          <div className="grid gap-4 sm:grid-cols-2">
-            <label>
-              <span className="mb-2 block text-xs font-semibold text-[#334155]">Discount Type</span>
-              <select
-                name="newUserDiscountType"
-                value={discountType}
-                onChange={(e) => setDiscountType(e.target.value as "NONE" | "FLAT" | "PERCENTAGE")}
-                className={inputClass}
-              >
-                <option value="NONE">No discount (Standard price)</option>
-                <option value="FLAT">Flat discount (₹ Amount off)</option>
-                <option value="PERCENTAGE">Percentage discount (% off)</option>
-              </select>
-              <FieldError state={state} name="newUserDiscountType" />
-            </label>
-
-            {discountType !== "NONE" ? (
-              <label>
-                <span className="mb-2 block text-xs font-semibold text-[#334155]">
-                  {discountType === "FLAT" ? "Flat discount amount (₹)" : "Discount percentage (%)"}
-                </span>
-                <input
-                  name="newUserDiscountValue"
-                  type="number"
-                  min="0"
-                  max={discountType === "PERCENTAGE" ? 100 : undefined}
-                  step={discountType === "FLAT" ? "0.01" : "1"}
-                  required
-                  value={discountValue}
-                  onChange={(e) => setDiscountValue(Number(e.target.value))}
-                  className={inputClass}
-                  placeholder={discountType === "FLAT" ? "e.g. 100 for ₹100 off" : "e.g. 10 for 10% off"}
-                />
-                <FieldError state={state} name="newUserDiscountValue" />
-              </label>
-            ) : (
-              <input type="hidden" name="newUserDiscountValue" value="0" />
-            )}
-          </div>
-
-          {discountType !== "NONE" && Number(discountValue) > 0 ? (
-            <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-emerald-200 bg-emerald-50/90 p-3 text-xs text-emerald-950">
-              <div>
-                <span className="font-bold">Live offer preview:</span>{" "}
-                Standard plan price is ₹{basePrice.toFixed(2)}, first-time customer pays{" "}
-                <strong className="text-sm font-extrabold text-emerald-700">₹{discountedPrice.toFixed(2)}</strong>
-              </div>
-              <span className="rounded bg-emerald-700 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-white">
-                {discountType === "FLAT" ? `₹${discountValue} OFF` : `${discountValue}% OFF`}
-              </span>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h3 className="text-sm font-bold text-[#1e293b]">Promotional Offers & Discounts</h3>
+              <p className="mt-0.5 text-xs text-[#64748b]">
+                Configure dynamic offers for this plan. You can add multiple offers (e.g. Festival sales, First-time owner offers, seasonal discounts). Customers pick 1 offer at checkout.
+              </p>
             </div>
-          ) : null}
+            <button
+              type="button"
+              onClick={() => {
+                setOffers((current) => [
+                  ...current,
+                  {
+                    id: Math.random().toString(36).slice(2, 9),
+                    name: "",
+                    type: "FLAT",
+                    value: 0,
+                    isFirstTimeOnly: false,
+                  },
+                ]);
+              }}
+              className="focus-ring inline-flex shrink-0 items-center gap-1.5 border border-[#057c73] bg-white px-3 py-2 text-[10px] font-bold uppercase tracking-[.08em] text-[#035f58] hover:bg-[#e6f2f0]"
+            >
+              <Plus size={14} /> Add Plan Offer
+            </button>
+          </div>
+
+          <input type="hidden" name="offersJson" value={JSON.stringify(offers)} />
+          {/* Fallback for backward compatibility */}
+          <input
+            type="hidden"
+            name="newUserDiscountType"
+            value={offers.find((o) => o.isFirstTimeOnly)?.type ?? "NONE"}
+          />
+          <input
+            type="hidden"
+            name="newUserDiscountValue"
+            value={offers.find((o) => o.isFirstTimeOnly)?.value ?? 0}
+          />
+
+          {offers.length === 0 ? (
+            <div className="rounded-lg border border-dashed border-[#cbd5e1] p-4 text-center text-xs text-[#64748b]">
+              No promotional offers configured for this plan yet. Click <strong className="text-[#057c73]">Add Plan Offer</strong> to add a discount.
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {offers.map((offer, index) => {
+                const discountAmount =
+                  offer.type === "FLAT"
+                    ? Number(offer.value) || 0
+                    : ((basePrice * (Number(offer.value) || 0)) / 100);
+                const finalPrice = Math.max(0, basePrice - discountAmount);
+
+                return (
+                  <div
+                    key={offer.id || index}
+                    className="rounded-lg border border-[#e2e8f0] bg-white p-3.5 shadow-sm space-y-3"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-xs font-bold text-[#057c73] uppercase tracking-wider">
+                        Offer #{index + 1}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setOffers((current) => current.filter((_, i) => i !== index))}
+                        className="text-rose-600 hover:text-rose-800 text-xs font-semibold inline-flex items-center gap-1"
+                      >
+                        <Trash2 size={13} /> Remove
+                      </button>
+                    </div>
+
+                    <div className="grid gap-3 sm:grid-cols-3">
+                      <div>
+                        <span className="mb-1 block text-xs font-semibold text-[#334155]">Offer Name</span>
+                        <input
+                          type="text"
+                          required
+                          value={offer.name}
+                          placeholder="e.g. Diwali Dhamaka / First-time Owner"
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setOffers((current) =>
+                              current.map((item, i) => (i === index ? { ...item, name: val } : item)),
+                            );
+                          }}
+                          className={inputClass}
+                        />
+                      </div>
+
+                      <div>
+                        <span className="mb-1 block text-xs font-semibold text-[#334155]">Discount Type</span>
+                        <select
+                          value={offer.type}
+                          onChange={(e) => {
+                            const val = e.target.value as "FLAT" | "PERCENTAGE";
+                            setOffers((current) =>
+                              current.map((item, i) => (i === index ? { ...item, type: val } : item)),
+                            );
+                          }}
+                          className={inputClass}
+                        >
+                          <option value="FLAT">Flat ₹ OFF</option>
+                          <option value="PERCENTAGE">Percentage % OFF</option>
+                        </select>
+                      </div>
+
+                      <div>
+                        <span className="mb-1 block text-xs font-semibold text-[#334155]">
+                          {offer.type === "FLAT" ? "Discount Amount (₹)" : "Discount (%)"}
+                        </span>
+                        <input
+                          type="number"
+                          min="0.01"
+                          max={offer.type === "PERCENTAGE" ? 100 : undefined}
+                          step={offer.type === "FLAT" ? "0.01" : "1"}
+                          required
+                          value={offer.value || ""}
+                          placeholder={offer.type === "FLAT" ? "e.g. 100" : "e.g. 10"}
+                          onChange={(e) => {
+                            const val = Number(e.target.value);
+                            setOffers((current) =>
+                              current.map((item, i) => (i === index ? { ...item, value: val } : item)),
+                            );
+                          }}
+                          className={inputClass}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-[#f1f5f9]">
+                      <label className="flex items-center gap-2 cursor-pointer text-xs font-medium text-[#475467]">
+                        <input
+                          type="checkbox"
+                          checked={offer.isFirstTimeOnly}
+                          onChange={(e) => {
+                            const checked = e.target.checked;
+                            setOffers((current) =>
+                              current.map((item, i) => (i === index ? { ...item, isFirstTimeOnly: checked } : item)),
+                            );
+                          }}
+                          className="h-4 w-4 rounded border-[#cbd5e1] text-[#057c73] focus:ring-[#057c73]"
+                        />
+                        <span>Apply only to first-time owners with new mobile number</span>
+                      </label>
+
+                      {offer.value > 0 ? (
+                        <div className="inline-flex items-center gap-1.5 rounded bg-emerald-50 px-2.5 py-1 text-xs text-emerald-800">
+                          <span className="font-semibold">Customer pays:</span>
+                          <strong className="font-extrabold text-emerald-700">₹{finalPrice.toFixed(2)}</strong>
+                          <span className="text-[10px] text-emerald-600 font-bold">
+                            ({offer.type === "FLAT" ? `₹${offer.value} OFF` : `${offer.value}% OFF`})
+                          </span>
+                        </div>
+                      ) : null}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
 
         <label className="sm:col-span-2">

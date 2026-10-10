@@ -12,7 +12,12 @@ import {
   ShieldCheck,
   Sparkles,
 } from "lucide-react";
-import { calculatePlanDiscount } from "@/lib/discounts";
+import {
+  calculateOfferDiscount,
+  calculatePlanDiscount,
+  normalizePlanOffers,
+  type PlanOffer,
+} from "@/lib/discounts";
 
 type Plan = {
   id: string;
@@ -29,6 +34,7 @@ type Plan = {
   purchasable: boolean;
   newUserDiscountType?: "NONE" | "FLAT" | "PERCENTAGE";
   newUserDiscountValue?: number;
+  offers?: PlanOffer[];
 };
 type Details = {
   companyName: string;
@@ -124,25 +130,45 @@ export function SubscriptionCheckout({
   const [freeActivation, setFreeActivation] = useState(false);
   const [copied, setCopied] = useState(false);
   const [finishConfirmOpen, setFinishConfirmOpen] = useState(false);
+  const [chosenOfferId, setChosenOfferId] = useState<string | null>(null);
+
   const selectedPlan = useMemo(
     () => plans.find((plan) => plan.id === selectedPlanId),
     [plans, selectedPlanId],
   );
 
-  const selectedPlanDiscount = useMemo(
-    () =>
-      calculatePlanDiscount(
-        selectedPlan?.priceInPaise ?? 0,
-        selectedPlan?.newUserDiscountType,
-        selectedPlan?.newUserDiscountValue,
-      ),
-    [selectedPlan],
+  const availableOffers = useMemo(() => {
+    if (!selectedPlan) return [];
+    const all = normalizePlanOffers(
+      selectedPlan.offers,
+      selectedPlan.newUserDiscountType,
+      selectedPlan.newUserDiscountValue,
+    );
+    return all.filter((offer) => {
+      if (offer.isFirstTimeOnly) {
+        return isFirstTimeCustomer === true;
+      }
+      return true;
+    });
+  }, [selectedPlan, isFirstTimeCustomer]);
+
+  const selectedOffer = useMemo(() => {
+    if (chosenOfferId === "none") return null;
+    if (chosenOfferId) {
+      const match = availableOffers.find((o) => o.id === chosenOfferId);
+      if (match) return match;
+    }
+    return availableOffers[0] ?? null;
+  }, [availableOffers, chosenOfferId]);
+
+  const selectedOfferDiscount = useMemo(
+    () => calculateOfferDiscount(selectedPlan?.priceInPaise ?? 0, selectedOffer),
+    [selectedPlan, selectedOffer],
   );
 
-  const effectivePayableAmount =
-    isFirstTimeCustomer === true && selectedPlanDiscount.hasDiscount
-      ? selectedPlanDiscount.discountedPriceInPaise
-      : (selectedPlan?.priceInPaise ?? 0);
+  const effectivePayableAmount = selectedOfferDiscount.hasDiscount
+    ? selectedOfferDiscount.discountedPriceInPaise
+    : (selectedPlan?.priceInPaise ?? 0);
 
   async function handleDetailsSubmit(event: React.FormEvent) {
     event.preventDefault();
@@ -224,7 +250,11 @@ export function SubscriptionCheckout({
       const orderResponse = await fetch("/api/subscriptions/order", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...details, planId: selectedPlan.id }),
+        body: JSON.stringify({
+          ...details,
+          planId: selectedPlan.id,
+          offerId: selectedOffer?.id,
+        }),
       });
       const order = (await orderResponse.json()) as Record<string, unknown>;
       if (!orderResponse.ok)
@@ -654,6 +684,89 @@ export function SubscriptionCheckout({
                 );
               })}
             </div>
+
+            {selectedPlan && availableOffers.length > 0 ? (
+              <div className="mt-5 rounded-xl border border-emerald-200 bg-emerald-50/70 p-4 space-y-3">
+                <div className="flex items-center gap-2">
+                  <Sparkles size={16} className="text-emerald-700 shrink-0" />
+                  <h3 className="text-sm font-bold text-emerald-950">
+                    Offers Available for {selectedPlan.name} (Choose 1 offer)
+                  </h3>
+                </div>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {availableOffers.map((offer) => {
+                    const calc = calculateOfferDiscount(selectedPlan.priceInPaise, offer);
+                    const isSelected = selectedOffer?.id === offer.id;
+                    return (
+                      <button
+                        type="button"
+                        key={offer.id}
+                        onClick={() => setChosenOfferId(offer.id)}
+                        className={`flex items-start justify-between rounded-lg border p-3 text-left transition ${
+                          isSelected
+                            ? "border-emerald-600 bg-white shadow-sm ring-2 ring-emerald-600/30"
+                            : "border-emerald-200/80 bg-white/70 hover:bg-white"
+                        }`}
+                      >
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-bold text-slate-900">{offer.name}</span>
+                            <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-[9px] font-extrabold uppercase text-emerald-800">
+                              {calc.discountLabel}
+                            </span>
+                          </div>
+                          {offer.isFirstTimeOnly ? (
+                            <span className="block text-[10px] font-medium text-emerald-700">
+                              ★ Exclusive for First-Time Shop Owners
+                            </span>
+                          ) : null}
+                          <span className="block text-xs font-bold text-emerald-900">
+                            Pay {formatMoney(calc.discountedPriceInPaise)}{" "}
+                            <span className="text-[10px] font-normal text-slate-500 line-through">
+                              {formatMoney(selectedPlan.priceInPaise)}
+                            </span>
+                          </span>
+                        </div>
+                        <div
+                          className={`mt-0.5 h-4 w-4 rounded-full border flex items-center justify-center ${
+                            isSelected
+                              ? "border-emerald-600 bg-emerald-600 text-white"
+                              : "border-slate-300"
+                          }`}
+                        >
+                          {isSelected ? <Check size={11} strokeWidth={3} /> : null}
+                        </div>
+                      </button>
+                    );
+                  })}
+                  <button
+                    type="button"
+                    onClick={() => setChosenOfferId("none")}
+                    className={`flex items-center justify-between rounded-lg border p-3 text-left transition ${
+                      selectedOffer === null
+                        ? "border-slate-600 bg-white shadow-sm ring-2 ring-slate-600/20"
+                        : "border-slate-200 bg-white/70 hover:bg-white"
+                    }`}
+                  >
+                    <div>
+                      <span className="text-xs font-semibold text-slate-800">No Offer</span>
+                      <span className="block text-[11px] text-slate-500">
+                        Pay standard {formatMoney(selectedPlan.priceInPaise)}
+                      </span>
+                    </div>
+                    <div
+                      className={`h-4 w-4 rounded-full border flex items-center justify-center ${
+                        selectedOffer === null
+                          ? "border-slate-700 bg-slate-700 text-white"
+                          : "border-slate-300"
+                      }`}
+                    >
+                      {selectedOffer === null ? <Check size={11} strokeWidth={3} /> : null}
+                    </div>
+                  </button>
+                </div>
+              </div>
+            ) : null}
             {plansUnavailable ? (
               <p className="mt-4 bg-rose-50 p-3 text-sm text-rose-700">
                 Plans are temporarily unavailable. Please try again later.
@@ -730,15 +843,15 @@ export function SubscriptionCheckout({
           <div className="mt-4 border-t border-[#dfe3e1] pt-3">
             <span className="text-xs text-[#6d716f]">Selected plan</span>
             <strong className="mt-1 block">{selectedPlan.name}</strong>
-            {isFirstTimeCustomer === true && selectedPlanDiscount.hasDiscount ? (
+            {selectedOfferDiscount.hasDiscount ? (
               <div className="mt-2 space-y-1.5 rounded-lg border border-emerald-200 bg-emerald-50/70 p-2.5 text-xs">
                 <div className="flex justify-between text-[#6d716f]">
                   <span>Regular price:</span>
                   <span className="line-through">{formatMoney(selectedPlan.priceInPaise)}</span>
                 </div>
                 <div className="flex justify-between font-semibold text-emerald-800">
-                  <span>Welcome offer:</span>
-                  <span>-{formatMoney(selectedPlanDiscount.discountAmountInPaise)} ({selectedPlanDiscount.discountLabel})</span>
+                  <span>Applied offer ({selectedOffer?.name}):</span>
+                  <span>-{formatMoney(selectedOfferDiscount.discountAmountInPaise)} ({selectedOfferDiscount.discountLabel})</span>
                 </div>
                 <div className="flex justify-between border-t border-emerald-200/80 pt-1.5 font-bold text-emerald-950">
                   <span>Payable amount:</span>

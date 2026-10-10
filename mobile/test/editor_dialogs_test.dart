@@ -261,6 +261,8 @@ void main() {
       find.widgetWithText(TextFormField, 'Mobile number'),
       '9876543210',
     );
+    await tester.ensureVisible(find.text('Save this customer for future bills'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Save this customer for future bills'));
     await tester.ensureVisible(find.text('Complete sale'));
     await tester.tap(find.text('Complete sale'));

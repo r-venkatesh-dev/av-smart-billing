@@ -1,6 +1,7 @@
 import "server-only";
 
 import { requireAdminRole } from "@/lib/auth/authorization";
+import { normalizePlanOffers } from "@/lib/discounts";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
@@ -90,6 +91,11 @@ export async function listAdminPlans() {
     status: row.status,
     newUserDiscountType: ((row as Record<string, unknown>).new_user_discount_type || "NONE") as "NONE" | "FLAT" | "PERCENTAGE",
     newUserDiscountValue: Number((row as Record<string, unknown>).new_user_discount_value ?? 0),
+    offers: normalizePlanOffers(
+      (row as Record<string, unknown>).offers,
+      (row as Record<string, unknown>).new_user_discount_type as string,
+      Number((row as Record<string, unknown>).new_user_discount_value ?? 0),
+    ),
   }));
 }
 

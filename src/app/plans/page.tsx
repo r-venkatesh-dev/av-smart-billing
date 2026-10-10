@@ -3,7 +3,7 @@ import { Check, MonitorSmartphone, X } from "lucide-react";
 import { PublicPageIntro, PublicSite } from "@/components/public-site";
 import { formatMoney } from "@/lib/format";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { calculatePlanDiscount } from "@/lib/discounts";
+import { calculateOfferDiscount, normalizePlanOffers } from "@/lib/discounts";
 
 export const metadata = {
   title: "Plans and pricing",
@@ -38,9 +38,20 @@ export default async function PublicPlansPage() {
               const features = Array.isArray(plan.features)
                 ? plan.features.filter((feature: unknown): feature is string => typeof feature === "string")
                 : [];
-              const discountType = (plan.new_user_discount_type || "NONE") as string;
-              const discountValue = Number(plan.new_user_discount_value ?? 0);
-              const discountCalc = calculatePlanDiscount(Number(plan.price_in_paise), discountType, discountValue);
+              const offers = normalizePlanOffers(
+                plan.offers,
+                plan.new_user_discount_type,
+                plan.new_user_discount_value,
+              );
+              const bestOffer = offers[0];
+              const discountCalc = bestOffer
+                ? calculateOfferDiscount(Number(plan.price_in_paise), bestOffer)
+                : {
+                    hasDiscount: false,
+                    discountedPriceInPaise: Number(plan.price_in_paise),
+                    discountLabel: "",
+                    badgeText: "",
+                  };
 
               return (
                 <article key={plan.id} className="border border-[#dfe3e1] bg-white p-5">
@@ -59,9 +70,15 @@ export default async function PublicPlansPage() {
                         </span>
                         <span className="text-xs text-[#6d716f]"> / {String(plan.interval).toLowerCase()}</span>
                       </div>
-                      <div className="mt-1.5 inline-flex items-center gap-1.5 rounded border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-[.08em] text-emerald-700">
-                        <span>🎉 New user offer:</span>
-                        <span>{discountCalc.discountLabel}</span>
+                      <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                        <span className="rounded border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-[.08em] text-emerald-700">
+                          🎉 {bestOffer.name}: {discountCalc.discountLabel}
+                        </span>
+                        {offers.length > 1 ? (
+                          <span className="rounded bg-emerald-100/70 px-1.5 py-0.5 text-[9px] font-bold text-emerald-800">
+                            +{offers.length - 1} more offer{offers.length - 1 > 1 ? "s" : ""}
+                          </span>
+                        ) : null}
                       </div>
                     </div>
                   ) : (

@@ -13,6 +13,7 @@ export const subscriptionOrderSchema = z.object({
   phone: z.string().trim().regex(/^[6-9][0-9]{9}$/, "Enter a valid 10-digit mobile number."),
   address: z.string().trim().min(5).max(500),
   gstin,
+  offerId: z.string().trim().optional(),
 });
 
 export const subscriptionVerificationSchema = z.object({

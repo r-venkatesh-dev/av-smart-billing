@@ -3,7 +3,7 @@ import { encryptLicenseKey } from "@/lib/license-key-vault";
 import { createRazorpayOrder, getRazorpayEnv, getSubscriptionLicenseCreatedBy } from "@/lib/razorpay";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { subscriptionOrderSchema } from "@/lib/validation/subscription";
-import { calculatePlanDiscount } from "@/lib/discounts";
+import { calculateOfferDiscount, normalizePlanOffers } from "@/lib/discounts";
 
 export const runtime = "nodejs";
 
@@ -48,10 +48,16 @@ export async function POST(request: Request) {
 
   let payableAmountInPaise = Number(plan.price_in_paise);
   let discountAppliedInPaise = 0;
-  const discountType = ((plan as Record<string, unknown>).new_user_discount_type || "NONE") as string;
-  const discountValue = Number((plan as Record<string, unknown>).new_user_discount_value ?? 0);
+  let appliedOfferName = "";
+  let appliedOfferId = parsed.data.offerId || "";
 
-  if (discountType !== "NONE" && discountValue > 0 && payableAmountInPaise > 0) {
+  const allOffers = normalizePlanOffers(
+    (plan as Record<string, unknown>).offers,
+    (plan as Record<string, unknown>).new_user_discount_type as string,
+    Number((plan as Record<string, unknown>).new_user_discount_value ?? 0),
+  );
+
+  if (allOffers.length > 0 && payableAmountInPaise > 0) {
     const rawPhone = parsed.data.phone;
     const digits = rawPhone.replace(/\D/g, "");
     const last10 = digits.slice(-10);
@@ -69,10 +75,21 @@ export async function POST(request: Request) {
     ]);
 
     const isFirstTime = (existingCustomers.count ?? 0) === 0 && (completedOrders.count ?? 0) === 0;
-    if (isFirstTime) {
-      const calculation = calculatePlanDiscount(payableAmountInPaise, discountType, discountValue);
+
+    let matchedOffer = appliedOfferId
+      ? allOffers.find((o) => o.id === appliedOfferId)
+      : allOffers.find((o) => !o.isFirstTimeOnly || isFirstTime);
+
+    if (matchedOffer && matchedOffer.isFirstTimeOnly && !isFirstTime) {
+      matchedOffer = undefined;
+    }
+
+    if (matchedOffer) {
+      const calculation = calculateOfferDiscount(payableAmountInPaise, matchedOffer);
       payableAmountInPaise = calculation.discountedPriceInPaise;
       discountAppliedInPaise = calculation.discountAmountInPaise;
+      appliedOfferName = matchedOffer.name;
+      appliedOfferId = matchedOffer.id;
     }
   }
 
@@ -87,6 +104,8 @@ export async function POST(request: Request) {
     plan_name: plan.name,
     amount_in_paise: payableAmountInPaise,
     status: "CREATED",
+    discount_applied_in_paise: discountAppliedInPaise,
+    discount_notes: appliedOfferName ? `Offer: ${appliedOfferName}` : null,
   };
   const { data: orderRecord, error: insertError } = await supabase
     .from("subscription_orders")

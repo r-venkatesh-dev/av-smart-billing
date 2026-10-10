@@ -828,22 +828,32 @@ class _InvoiceDetailScreenState extends State<InvoiceDetailScreen> {
   }
 
   @override
-  Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: const Text('Invoice')),
-    body: FutureBuilder<InvoiceDetail>(
-      future: invoice,
-      builder: (context, snapshot) {
-        if (snapshot.hasError) {
-          return ErrorState(
+  Widget build(BuildContext context) => FutureBuilder<InvoiceDetail>(
+    future: invoice,
+    builder: (context, snapshot) {
+      if (snapshot.hasError) {
+        return Scaffold(
+          appBar: AppBar(title: const Text('Invoice')),
+          body: ErrorState(
             message: errorMessage(snapshot.error!),
             onRetry: _retry,
-          );
-        }
-        if (!snapshot.hasData) return const LoadingView();
-        final detail = snapshot.data!;
-        final invoice = detail.invoice;
-        return ListView(
-          padding: const EdgeInsets.all(16),
+          ),
+        );
+      }
+      if (!snapshot.hasData) {
+        return Scaffold(
+          appBar: AppBar(title: const Text('Invoice')),
+          body: const LoadingView(),
+        );
+      }
+      final detail = snapshot.data!;
+      final invoice = detail.invoice;
+      return Scaffold(
+        appBar: AppBar(
+          title: Text(invoice['invoice_number'] as String? ?? 'Invoice'),
+        ),
+        body: ListView(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
           children: [
             Card(
               child: Padding(
@@ -978,56 +988,6 @@ class _InvoiceDetailScreenState extends State<InvoiceDetailScreen> {
               ),
             ),
             const SizedBox(height: 14),
-            if (invoice['status'] == 'DUE') ...[
-              FilledButton.icon(
-                onPressed: _markAsPaid,
-                icon: const Icon(Icons.payments_outlined),
-                label: const Text('Mark as paid'),
-                style: FilledButton.styleFrom(
-                  minimumSize: const Size.fromHeight(52),
-                ),
-              ),
-              const SizedBox(height: 10),
-            ],
-            FilledButton.icon(
-              onPressed: () async {
-                try {
-                  await const WhatsAppService().openCustomerChat(detail);
-                } catch (error) {
-                  if (context.mounted) {
-                    showMessage(context, errorMessage(error), error: true);
-                  }
-                }
-              },
-              icon: const Icon(Icons.chat_outlined),
-              label: const Text('Message customer on WhatsApp'),
-              style: FilledButton.styleFrom(
-                backgroundColor: const Color(0xff128c7e),
-                minimumSize: const Size.fromHeight(52),
-              ),
-            ),
-            const SizedBox(height: 10),
-            OutlinedButton.icon(
-              onPressed: () async {
-                try {
-                  await shareInvoice(detail);
-                } catch (error) {
-                  if (context.mounted) {
-                    showMessage(
-                      context,
-                      'Could not share this invoice.',
-                      error: true,
-                    );
-                  }
-                }
-              },
-              icon: const Icon(Icons.share),
-              label: const Text('Share invoice PDF'),
-              style: OutlinedButton.styleFrom(
-                minimumSize: const Size.fromHeight(52),
-              ),
-            ),
-            const SizedBox(height: 10),
             OutlinedButton.icon(
               onPressed: () => showModalBottomSheet<void>(
                 context: context,
@@ -1038,36 +998,103 @@ class _InvoiceDetailScreenState extends State<InvoiceDetailScreen> {
               icon: const Icon(Icons.preview_outlined),
               label: const Text('Preview thermal receipt'),
               style: OutlinedButton.styleFrom(
-                minimumSize: const Size.fromHeight(50),
-              ),
-            ),
-            // const SizedBox(height: 10),
-            // OutlinedButton.icon(
-            //   onPressed: () => printInvoice(detail),
-            //   icon: const Icon(Icons.print),
-            //   label: const Text('Print A4 using phone'),
-            //   style: OutlinedButton.styleFrom(
-            //     minimumSize: const Size.fromHeight(50),
-            //   ),
-            // ),
-            const SizedBox(height: 10),
-            OutlinedButton.icon(
-              onPressed: () => showModalBottomSheet<void>(
-                context: context,
-                isScrollControlled: true,
-                showDragHandle: true,
-                builder: (_) => ThermalPrintSheet(invoice: detail),
-              ),
-              icon: const Icon(Icons.bluetooth),
-              label: const Text('Bluetooth thermal print'),
-              style: OutlinedButton.styleFrom(
-                minimumSize: const Size.fromHeight(50),
+                minimumSize: const Size.fromHeight(48),
               ),
             ),
           ],
-        );
-      },
-    ),
+        ),
+        bottomNavigationBar: SafeArea(
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+            decoration: BoxDecoration(
+              color: Theme.of(context).colorScheme.surface,
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.08),
+                  blurRadius: 10,
+                  offset: const Offset(0, -2),
+                ),
+              ],
+              border: Border(
+                top: BorderSide(
+                  color: Theme.of(context)
+                      .colorScheme
+                      .outlineVariant
+                      .withOpacity(0.4),
+                ),
+              ),
+            ),
+            child: Row(
+              children: [
+                if (invoice['status'] == 'DUE') ...[
+                  IconButton.filled(
+                    tooltip: 'Mark as Paid',
+                    style: IconButton.styleFrom(
+                      backgroundColor: Colors.amber.shade800,
+                    ),
+                    onPressed: _markAsPaid,
+                    icon: const Icon(Icons.payments_outlined),
+                  ),
+                  const SizedBox(width: 8),
+                ],
+                Expanded(
+                  child: FilledButton.icon(
+                    onPressed: () async {
+                      try {
+                        await const WhatsAppService().openCustomerChat(detail);
+                      } catch (error) {
+                        if (context.mounted) {
+                          showMessage(
+                            context,
+                            errorMessage(error),
+                            error: true,
+                          );
+                        }
+                      }
+                    },
+                    icon: const Icon(Icons.chat_outlined),
+                    label: const Text('WhatsApp'),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: const Color(0xff128c7e),
+                      minimumSize: const Size.fromHeight(48),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                IconButton.filledTonal(
+                  tooltip: 'Share invoice PDF',
+                  onPressed: () async {
+                    try {
+                      await shareInvoice(detail);
+                    } catch (error) {
+                      if (context.mounted) {
+                        showMessage(
+                          context,
+                          'Could not share this invoice.',
+                          error: true,
+                        );
+                      }
+                    }
+                  },
+                  icon: const Icon(Icons.share),
+                ),
+                const SizedBox(width: 8),
+                IconButton.filledTonal(
+                  tooltip: 'Bluetooth thermal print',
+                  onPressed: () => showModalBottomSheet<void>(
+                    context: context,
+                    isScrollControlled: true,
+                    showDragHandle: true,
+                    builder: (_) => ThermalPrintSheet(invoice: detail),
+                  ),
+                  icon: const Icon(Icons.print_outlined),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    },
   );
 }
 
