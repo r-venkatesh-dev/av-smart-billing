@@ -961,6 +961,8 @@ class AppDatabase {
     required List<CartLine> lines,
     required String paymentMethod,
     double overallDiscountPercent = 0,
+    String? id,
+    String? invoiceNumber,
   }) async {
     if (lines.isEmpty) throw Exception('Add at least one product.');
     if (customer == null && walkInName.trim().length < 2) {
@@ -989,12 +991,33 @@ class AppDatabase {
           whereArgs: [line.product.id],
           limit: 1,
         ));
+        Product product;
         if (row.isEmpty) {
-          throw Exception('${line.product.name} is no longer available.');
-        }
-        final product = Product.fromMap(row.single);
-        if (line.quantity <= 0 || product.stockQuantity < line.quantity) {
-          throw Exception('Not enough stock for ${product.name}.');
+          if (id != null) {
+            product = line.product;
+            await txn.insert('products', {
+              'id': product.id,
+              'name': product.name,
+              'sku': product.sku,
+              'barcode': product.barcode,
+              'unit': product.unit,
+              'price_in_paise': product.priceInPaise,
+              'tax_rate_basis_points': product.taxRateBasisPoints,
+              'discount_percent': product.discountPercent,
+              'stock_quantity': product.stockQuantity,
+              'active': 1,
+              'created_at': DateTime.now().toUtc().toIso8601String(),
+              'updated_at': DateTime.now().toUtc().toIso8601String(),
+            });
+          } else {
+            throw Exception('${line.product.name} is no longer available.');
+          }
+        } else {
+          product = Product.fromMap(row.single);
+          if (id == null &&
+              (line.quantity <= 0 || product.stockQuantity < line.quantity)) {
+            throw Exception('Not enough stock for ${product.name}.');
+          }
         }
         prepared.add((
           product: product,
@@ -1023,10 +1046,10 @@ class AppDatabase {
       final discount = bill.discount;
       final tax = bill.tax;
       final total = bill.total;
-      final id = const Uuid().v4();
+      final finalInvoiceId = id ?? const Uuid().v4();
       final issuedAt = DateTime.now().toUtc().toIso8601String();
       final number = business['next_invoice_number'] as int;
-      final invoiceNumber =
+      final finalInvoiceNumber = invoiceNumber ??
           '${business['invoice_prefix']}-${number.toString().padLeft(6, '0')}';
       final paid = paymentMethod != 'CREDIT';
       var invoiceCustomer = customer;
@@ -1068,8 +1091,8 @@ class AppDatabase {
         }
       }
       await txn.insert('invoices', {
-        'id': id,
-        'invoice_number': invoiceNumber,
+        'id': finalInvoiceId,
+        'invoice_number': finalInvoiceNumber,
         'customer_id': invoiceCustomer?.id,
         'customer_name': invoiceCustomer?.name ?? walkInName.trim(),
         'customer_phone': invoiceCustomer?.phone ?? walkInPhone.trim(),
@@ -1098,7 +1121,7 @@ class AppDatabase {
             .round();
         await txn.insert('invoice_items', {
           'id': const Uuid().v4(),
-          'invoice_id': id,
+          'invoice_id': finalInvoiceId,
           'product_id': item.product.id,
           'description': item.product.name,
           'sku': item.product.sku,
@@ -1118,10 +1141,12 @@ class AppDatabase {
           [item.quantity, issuedAt, item.product.id],
         );
       }
-      await txn.rawUpdate(
-        "update business set next_invoice_number=next_invoice_number+1 where id='local-business'",
-      );
-      return id;
+      if (invoiceNumber == null) {
+        await txn.rawUpdate(
+          "update business set next_invoice_number=next_invoice_number+1 where id='local-business'",
+        );
+      }
+      return finalInvoiceId;
     });
   }
 

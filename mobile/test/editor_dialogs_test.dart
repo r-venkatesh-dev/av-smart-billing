@@ -271,4 +271,61 @@ void main() {
     expect(requestedSave, isTrue);
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets(
+    'checkout line discount dialog applies discount without controller lifecycle errors',
+    (tester) async {
+      final product = Product(
+        id: 'p1',
+        name: 'Tea',
+        sku: 'TEA-1',
+        barcode: '',
+        unit: 'pcs',
+        priceInPaise: 2000,
+        taxRateBasisPoints: 500,
+        discountPercent: 0,
+        stockQuantity: 10,
+        active: true,
+      );
+      final line = CartLine(product: product);
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Builder(
+            builder: (context) => Scaffold(
+              body: FilledButton(
+                onPressed: () => showModalBottomSheet<String>(
+                  context: context,
+                  isScrollControlled: true,
+                  builder: (_) => CheckoutSheet(
+                    cart: [line],
+                    customers: const [],
+                    onSave: (_, _, _, _, _, _) async => 'inv-1',
+                    onCancel: () {},
+                  ),
+                ),
+                child: const Text('Checkout'),
+              ),
+            ),
+          ),
+        ),
+      );
+
+      await tester.tap(find.text('Checkout'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byTooltip('Line discount'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Tea discount'), findsOneWidget);
+      await tester.enterText(
+        find.widgetWithText(TextField, 'Discount %'),
+        '10',
+      );
+      await tester.tap(find.text('Apply'));
+      await tester.pumpAndSettle();
+
+      expect(line.discountPercent, 10);
+      expect(tester.takeException(), isNull);
+    },
+  );
 }

@@ -582,6 +582,70 @@ class _BusinessEditorDialogState extends State<BusinessEditorDialog> {
   );
 }
 
+class LineDiscountDialog extends StatefulWidget {
+  const LineDiscountDialog({
+    super.key,
+    required this.productName,
+    required this.initialPercent,
+  });
+
+  final String productName;
+  final double initialPercent;
+
+  @override
+  State<LineDiscountDialog> createState() => _LineDiscountDialogState();
+}
+
+class _LineDiscountDialogState extends State<LineDiscountDialog> {
+  late final TextEditingController controller;
+
+  @override
+  void initState() {
+    super.initState();
+    controller = TextEditingController(
+      text: formatQuantity(widget.initialPercent),
+    );
+  }
+
+  @override
+  void dispose() {
+    controller.dispose();
+    super.dispose();
+  }
+
+  void _apply() {
+    final parsed = double.tryParse(controller.text);
+    if (parsed == null || parsed < 0 || parsed > 100) return;
+    Navigator.pop(context, parsed);
+  }
+
+  @override
+  Widget build(BuildContext context) => AppDialog(
+    icon: Icons.percent_rounded,
+    title: Text('${widget.productName} discount'),
+    content: TextField(
+      controller: controller,
+      autofocus: true,
+      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+      decoration: const InputDecoration(
+        labelText: 'Discount %',
+        suffixText: '%',
+      ),
+      onSubmitted: (_) => _apply(),
+    ),
+    actions: [
+      TextButton(
+        onPressed: () => Navigator.pop(context),
+        child: const Text('Cancel'),
+      ),
+      FilledButton(
+        onPressed: _apply,
+        child: const Text('Apply'),
+      ),
+    ],
+  );
+}
+
 class CheckoutSheet extends StatefulWidget {
   const CheckoutSheet({
     super.key,
@@ -650,40 +714,13 @@ class _CheckoutSheetState extends State<CheckoutSheet> {
   }
 
   Future<void> _editLineDiscount(CartLine line) async {
-    final controller = TextEditingController(
-      text: formatQuantity(line.discountPercent),
-    );
     final value = await showDialog<double>(
       context: context,
-      builder: (context) => AppDialog(
-        icon: Icons.percent_rounded,
-        title: Text('${line.product.name} discount'),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          decoration: const InputDecoration(
-            labelText: 'Discount %',
-            suffixText: '%',
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () {
-              final parsed = double.tryParse(controller.text);
-              if (parsed == null || parsed < 0 || parsed > 100) return;
-              Navigator.pop(context, parsed);
-            },
-            child: const Text('Apply'),
-          ),
-        ],
+      builder: (context) => LineDiscountDialog(
+        productName: line.product.name,
+        initialPercent: line.discountPercent,
       ),
     );
-    controller.dispose();
     if (value != null && mounted) {
       setState(() => line.discountPercent = value);
     }

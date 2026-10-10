@@ -171,6 +171,86 @@ class OnlineBillingService {
   Future<void> deleteCustomer(String token, String id) =>
       _request('DELETE', token, resource: 'customer', id: id);
 
+  Future<List<InvoiceSummary>> invoices(String token) async {
+    final payload = await _request('GET', token, resource: 'invoices');
+    return (payload['invoices'] as List<dynamic>)
+        .map((value) => value as Map<String, dynamic>)
+        .map(
+          (value) => InvoiceSummary(
+            id: value['id'] as String,
+            invoiceNumber: value['invoiceNumber'] as String,
+            customerName: value['customerName'] as String,
+            issuedAt: DateTime.parse(value['issuedAt'] as String),
+            totalInPaise: (value['totalInPaise'] as num).toInt(),
+            status: value['status'] as String,
+          ),
+        )
+        .toList();
+  }
+
+  Future<InvoiceDetail> invoice(String token, String id) async {
+    final payload = await _request('GET', token, resource: 'invoice', id: id);
+    final inv = payload['invoice'] as Map<String, dynamic>;
+    final items = (payload['items'] as List<dynamic>)
+        .map((i) => Map<String, Object?>.from(i as Map))
+        .toList();
+    final biz = payload['business'] as Map<String, dynamic>;
+
+    return InvoiceDetail(
+      invoice: Map<String, Object?>.from(inv),
+      items: items,
+      business: Map<String, Object?>.from(biz),
+    );
+  }
+
+  Future<({String invoiceId, String invoiceNumber, int totalInPaise})>
+  createPosSale(
+    String token, {
+    String? customerId,
+    required String walkInName,
+    required String walkInPhone,
+    required List<CartLine> lines,
+    required String paymentMethod,
+    double overallDiscountPercent = 0,
+    double? amountReceivedInRupees,
+    String? reference,
+  }) async {
+    final payload = await _request(
+      'POST',
+      token,
+      body: {
+        'resource': 'pos-sale',
+        'data': {
+          if (customerId != null) 'customerId': customerId,
+          'walkInName': walkInName.trim(),
+          'walkInPhone': walkInPhone.trim(),
+          'paymentMethod': paymentMethod,
+          'overallDiscountPercent': overallDiscountPercent,
+          if (amountReceivedInRupees != null)
+            'amountReceivedInRupees': amountReceivedInRupees,
+          if (reference != null && reference.trim().isNotEmpty)
+            'reference': reference.trim(),
+          'taxType': 'INTRA_STATE',
+          'items': lines
+              .map(
+                (l) => {
+                  'productId': l.product.id,
+                  'quantity': l.quantity,
+                  'discountPercent': l.discountPercent,
+                },
+              )
+              .toList(),
+        },
+      },
+    );
+
+    return (
+      invoiceId: payload['invoiceId'] as String,
+      invoiceNumber: payload['invoiceNumber'] as String,
+      totalInPaise: (payload['totalInPaise'] as num).toInt(),
+    );
+  }
+
   Future<Map<String, dynamic>> _request(
     String method,
     String token, {
@@ -195,6 +275,7 @@ class OnlineBillingService {
     late http.Response response;
     try {
       response = await switch (method) {
+        'POST' => _client.post(uri, headers: headers, body: jsonEncode(body)),
         'PUT' => _client.put(uri, headers: headers, body: jsonEncode(body)),
         'PATCH' => _client.patch(uri, headers: headers, body: jsonEncode(body)),
         'DELETE' => _client.delete(uri, headers: headers),

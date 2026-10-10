@@ -90,7 +90,7 @@ async function authorize(request: Request) {
 
   const business = await supabase
     .from("billing_businesses")
-    .select("id, company_name, low_stock_threshold")
+    .select("id, company_name, phone, email, address, gstin, invoice_prefix, invoice_terms, tax_type, payment_qr_path, low_stock_threshold")
     .eq("license_id", grant.licenseId)
     .eq("status", "ACTIVE")
     .maybeSingle();
@@ -186,6 +186,91 @@ export async function GET(request: Request) {
       if (result.error) throw new Error(result.error.message);
       return Response.json(
         { ok: true, customers: (result.data ?? []).map(customerResponse) },
+        { headers: { "Cache-Control": "no-store" } },
+      );
+    }
+    if (resource === "invoices") {
+      const result = await supabase
+        .from("billing_invoices")
+        .select("id, invoice_number, customer_name, issued_at, total_in_paise, status")
+        .eq("business_id", business.id)
+        .order("issued_at", { ascending: false })
+        .limit(100);
+      if (result.error) throw new Error(result.error.message);
+      return Response.json(
+        {
+          ok: true,
+          invoices: (result.data ?? []).map((row) => ({
+            id: row.id,
+            invoiceNumber: row.invoice_number,
+            customerName: row.customer_name ?? "Walk-in Customer",
+            issuedAt: row.issued_at,
+            totalInPaise: Number(row.total_in_paise),
+            status: row.status,
+          })),
+        },
+        { headers: { "Cache-Control": "no-store" } },
+      );
+    }
+    if (resource === "invoice") {
+      const invoiceId = url.searchParams.get("id");
+      if (!invoiceId) return failure("Invoice ID is required.", 400);
+      const [invoiceRes, itemsRes] = await Promise.all([
+        supabase
+          .from("billing_invoices")
+          .select("*")
+          .eq("id", invoiceId)
+          .eq("business_id", business.id)
+          .maybeSingle(),
+        supabase
+          .from("billing_invoice_items")
+          .select("*")
+          .eq("invoice_id", invoiceId),
+      ]);
+      if (invoiceRes.error) throw new Error(invoiceRes.error.message);
+      if (!invoiceRes.data) return failure("Invoice not found.", 404);
+      return Response.json(
+        {
+          ok: true,
+          invoice: {
+            ...invoiceRes.data,
+            invoice_number: invoiceRes.data.invoice_number,
+            customer_name: invoiceRes.data.customer_name ?? "Walk-in Customer",
+            customer_phone: invoiceRes.data.customer_phone ?? "",
+            customer_address: invoiceRes.data.customer_address ?? "",
+            customer_gstin: invoiceRes.data.customer_gstin ?? "",
+            total_in_paise: Number(invoiceRes.data.total_in_paise),
+            subtotal_in_paise: Number(invoiceRes.data.subtotal_in_paise),
+            discount_in_paise: Number(invoiceRes.data.discount_in_paise ?? 0),
+            tax_in_paise: Number(invoiceRes.data.tax_in_paise ?? 0),
+          },
+          items: (itemsRes.data ?? []).map((item) => ({
+            id: item.id,
+            product_id: item.product_id,
+            product_name: item.description,
+            sku: item.sku,
+            unit: item.unit,
+            quantity: Number(item.quantity),
+            unit_price_in_paise: Number(item.unit_price_in_paise),
+            tax_rate_basis_points: Number(item.tax_rate_basis_points),
+            discount_in_paise: Number(item.discount_in_paise ?? 0),
+            taxable_in_paise: Number(item.taxable_in_paise),
+            tax_in_paise: Number(item.line_tax_in_paise ?? 0),
+            subtotal_in_paise: Number(item.line_subtotal_in_paise ?? 0),
+            total_in_paise: Number(item.taxable_in_paise) + Number(item.line_tax_in_paise ?? 0),
+          })),
+          business: {
+            id: business.id,
+            company_name: business.company_name,
+            phone: business.phone ?? "",
+            email: business.email ?? "",
+            address: business.address ?? "",
+            gstin: business.gstin ?? "",
+            invoice_prefix: business.invoice_prefix ?? "INV",
+            invoice_terms: business.invoice_terms ?? "",
+            payment_qr_path: business.payment_qr_path ?? "",
+          },
+        },
         { headers: { "Cache-Control": "no-store" } },
       );
     }
@@ -375,3 +460,79 @@ export async function DELETE(request: Request) {
     return failure("Unable to delete this online data. Please try again.", 500);
   }
 }
+
+const posSaleSchema = z.object({
+  customerId: z.string().uuid().nullable().optional(),
+  walkInName: z.string().trim().default("Walk-in Customer"),
+  walkInPhone: z.string().trim().default(""),
+  paymentMethod: z.enum(["CASH", "UPI", "UPI_QR", "CARD", "BANK_TRANSFER", "OTHER", "CREDIT"]),
+  amountReceivedInRupees: z.number().min(0).optional(),
+  overallDiscountPercent: z.number().min(0).max(100).default(0),
+  reference: z.string().trim().max(120).default(""),
+  taxType: z.enum(["INTRA_STATE", "INTER_STATE"]).default("INTRA_STATE"),
+  items: z.array(z.object({
+    productId: z.string().uuid(),
+    quantity: z.number().positive(),
+    discountPercent: z.number().min(0).max(100).default(0),
+  })).min(1),
+});
+
+export async function POST(request: Request) {
+  try {
+    const { supabase, business } = await authorize(request);
+    const body = (await request.json().catch(() => null)) as { resource?: string; data?: unknown } | null;
+    const resource = body?.resource ?? "pos-sale";
+    if (resource !== "pos-sale") {
+      return failure("Unsupported resource.", 400);
+    }
+    const parsed = posSaleSchema.safeParse(body?.data);
+    if (!parsed.success) {
+      return failure(parsed.error.issues[0]?.message ?? "Invalid POS sale payload.", 400);
+    }
+    const val = parsed.data;
+    const paymentMethod = val.paymentMethod === "UPI_QR" ? "UPI" : val.paymentMethod;
+    const amountReceivedInPaise = val.amountReceivedInRupees != null
+      ? Math.round(val.amountReceivedInRupees * 100)
+      : 0;
+
+    const rpcResult = await supabase.rpc("create_billing_pos_sale", {
+      p_business_id: business.id,
+      p_customer_id: val.customerId || null,
+      p_walk_in_name: val.walkInName || "Walk-in Customer",
+      p_walk_in_phone: val.walkInPhone || "",
+      p_items: val.items,
+      p_payment_method: paymentMethod,
+      p_amount_received_in_paise: amountReceivedInPaise,
+      p_reference: val.reference || null,
+      p_tax_type: val.taxType,
+      p_overall_discount_percent: val.overallDiscountPercent,
+    });
+
+    if (rpcResult.error) {
+      return failure(rpcResult.error.message, 400);
+    }
+
+    const sale = rpcResult.data as {
+      invoiceId: string;
+      invoiceNumber: string;
+      totalInPaise: number;
+      changeInPaise?: number;
+    };
+
+    return Response.json(
+      {
+        ok: true,
+        invoiceId: sale.invoiceId,
+        invoiceNumber: sale.invoiceNumber,
+        totalInPaise: sale.totalInPaise,
+        changeInPaise: sale.changeInPaise ?? 0,
+      },
+      { headers: { "Cache-Control": "no-store" } },
+    );
+  } catch (error) {
+    if (error instanceof Response) return error;
+    console.error("Mobile online pos sale failed", error);
+    return failure("Unable to complete online sale. Please try again.", 500);
+  }
+}
+

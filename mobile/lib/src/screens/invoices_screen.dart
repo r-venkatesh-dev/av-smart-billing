@@ -78,7 +78,7 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
   @override
   void initState() {
     super.initState();
-    invoices = widget.controller.database.invoices();
+    invoices = widget.controller.invoices();
   }
 
   @override
@@ -91,12 +91,12 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
   void didUpdateWidget(covariant InvoicesScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.revision != widget.revision) {
-      invoices = widget.controller.database.invoices();
+      invoices = widget.controller.invoices();
     }
   }
 
   Future<void> _refresh() async {
-    final next = widget.controller.database.invoices();
+    final next = widget.controller.invoices();
     setState(() => invoices = next);
     await next;
   }
@@ -272,9 +272,9 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
             }
           },
         ),
-        title: const Text(
-          'Invoices',
-          style: TextStyle(
+        title: Text(
+          widget.controller.isOnline ? 'Invoices · Online' : 'Invoices',
+          style: const TextStyle(
             color: Colors.white,
             fontWeight: FontWeight.w700,
             fontSize: 20,
@@ -743,11 +743,11 @@ class _InvoiceDetailScreenState extends State<InvoiceDetailScreen> {
   @override
   void initState() {
     super.initState();
-    invoice = widget.controller.database.invoice(widget.invoiceId);
+    invoice = widget.controller.invoice(widget.invoiceId);
   }
 
   Future<void> _retry() async {
-    final next = widget.controller.database.invoice(widget.invoiceId);
+    final next = widget.controller.invoice(widget.invoiceId);
     setState(() => invoice = next);
     await next;
   }

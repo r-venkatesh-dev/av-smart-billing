@@ -262,6 +262,114 @@ class AppController extends ChangeNotifier {
       ? onlineBilling.deleteCustomer(session!.token, id)
       : database.deleteCustomer(id);
 
+  Future<Product?> productByBarcode(String barcode) async {
+    final clean = barcode.trim();
+    if (isOnline) {
+      final list = await products();
+      return list
+          .where(
+            (p) =>
+                p.barcode == clean ||
+                p.sku.toUpperCase() == clean.toUpperCase(),
+          )
+          .firstOrNull;
+    }
+    return database.productByBarcode(clean);
+  }
+
+  Future<List<InvoiceSummary>> invoices() async {
+    if (isOnline) {
+      try {
+        return await onlineBilling.invoices(session!.token);
+      } catch (_) {
+        return database.invoices();
+      }
+    }
+    return database.invoices();
+  }
+
+  Future<InvoiceDetail> invoice(String id) async {
+    if (isOnline) {
+      try {
+        return await onlineBilling.invoice(session!.token, id);
+      } catch (_) {
+        return database.invoice(id);
+      }
+    }
+    return database.invoice(id);
+  }
+
+  Future<String> createInvoice({
+    Customer? customer,
+    required String walkInName,
+    required String walkInPhone,
+    bool saveWalkInCustomer = false,
+    required List<CartLine> lines,
+    required String paymentMethod,
+    double overallDiscountPercent = 0,
+  }) async {
+    if (!isOnline) {
+      return database.createInvoice(
+        customer: customer,
+        walkInName: walkInName,
+        walkInPhone: walkInPhone,
+        saveWalkInCustomer: saveWalkInCustomer,
+        lines: lines,
+        paymentMethod: paymentMethod,
+        overallDiscountPercent: overallDiscountPercent,
+      );
+    }
+
+    Customer? effectiveCustomer = customer;
+    if (effectiveCustomer == null && saveWalkInCustomer) {
+      try {
+        await saveCustomer(
+          name: walkInName.trim(),
+          phone: walkInPhone.trim(),
+          address: '',
+          gstin: '',
+        );
+        final list = await customers();
+        effectiveCustomer = list
+            .where(
+              (c) => c.name.toLowerCase() == walkInName.trim().toLowerCase(),
+            )
+            .firstOrNull;
+      } catch (_) {
+        // Saving optional walk-in customer must not abort checkout
+      }
+    }
+
+    final sale = await onlineBilling.createPosSale(
+      session!.token,
+      customerId: effectiveCustomer?.id,
+      walkInName: effectiveCustomer?.name ?? walkInName,
+      walkInPhone: effectiveCustomer?.phone ?? walkInPhone,
+      lines: lines,
+      paymentMethod: paymentMethod,
+      overallDiscountPercent: overallDiscountPercent,
+    );
+
+    try {
+      await database.createInvoice(
+        customer: effectiveCustomer,
+        walkInName: walkInName,
+        walkInPhone: walkInPhone,
+        saveWalkInCustomer: false,
+        lines: lines,
+        paymentMethod: paymentMethod,
+        overallDiscountPercent: overallDiscountPercent,
+        id: sale.invoiceId,
+        invoiceNumber: sale.invoiceNumber,
+      );
+    } catch (_) {
+      // Local caching failure should not disrupt online sale
+    }
+
+    markDataChanged();
+    return sale.invoiceId;
+  }
+
   Future<void> activate(String key) async {
     session = await licenses.activate(key);
     billingMode = BillingMode.offline;

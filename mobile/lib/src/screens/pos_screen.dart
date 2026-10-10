@@ -54,7 +54,7 @@ class PosScreenState extends State<PosScreen> {
     }
     try {
       final results = await Future.wait([
-        widget.controller.database.products(),
+        widget.controller.products(),
         widget.controller.database.heldBills(),
       ]);
       final value = results[0] as List<Product>;
@@ -126,7 +126,7 @@ class PosScreenState extends State<PosScreen> {
               onContinuousScan: (scannedBarcode) async {
                 Product? product;
                 try {
-                  product = await widget.controller.database.productByBarcode(
+                  product = await widget.controller.productByBarcode(
                     scannedBarcode,
                   );
                 } catch (error) {
@@ -246,7 +246,7 @@ class PosScreenState extends State<PosScreen> {
     if (cart.isEmpty) return;
     List<Customer> customers;
     try {
-      customers = await widget.controller.database.customers();
+      customers = await widget.controller.customers();
     } catch (error) {
       if (mounted) showMessage(context, errorMessage(error), error: true);
       return;
@@ -264,7 +264,7 @@ class PosScreenState extends State<PosScreen> {
         paymentQrPath: business['payment_qr_path'] as String? ?? '',
         onSave:
             (customer, name, phone, payment, overallDiscount, saveCustomer) =>
-                widget.controller.database.createInvoice(
+                widget.controller.createInvoice(
                   customer: customer,
                   walkInName: name,
                   walkInPhone: phone,

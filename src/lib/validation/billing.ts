@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { optionalMobileNumber, requiredMobileNumber } from "@/lib/validation/common";
+import { optionalMobileNumber } from "@/lib/validation/common";
 
 const optionalEmail = z.string().trim().refine((value) => !value || z.email().safeParse(value).success, "Enter a valid email or leave it blank.");
 const optionalGstin = z.string().trim().toUpperCase().refine((value) => !value || /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/.test(value), "Enter a valid GSTIN or leave it blank.");
@@ -33,7 +33,7 @@ export const billingInvoiceSchema = z.object({
 }).superRefine((value, context) => {
   if (value.customerId !== "WALK_IN") return;
   if (value.walkInName.length < 2) context.addIssue({ code: "custom", path: ["walkInName"], message: "Enter the walk-in customer's name." });
-  if (!requiredMobileNumber.safeParse(value.walkInPhone).success) context.addIssue({ code: "custom", path: ["walkInPhone"], message: "Enter a valid 10-digit mobile number." });
+  if (value.walkInPhone && !optionalMobileNumber.safeParse(value.walkInPhone).success) context.addIssue({ code: "custom", path: ["walkInPhone"], message: "Enter a valid 10-digit mobile number." });
 });
 
 export const billingPaymentSchema = z.object({
@@ -56,7 +56,7 @@ export const billingPosSchema = z.object({
 }).superRefine((value, context) => {
   if (value.customerId) return;
   if (value.walkInName.length < 2) context.addIssue({ code: "custom", path: ["walkInName"], message: "Enter the walk-in customer's name." });
-  if (!requiredMobileNumber.safeParse(value.walkInPhone).success) context.addIssue({ code: "custom", path: ["walkInPhone"], message: "Enter a valid 10-digit mobile number." });
+  if (value.walkInPhone && !optionalMobileNumber.safeParse(value.walkInPhone).success) context.addIssue({ code: "custom", path: ["walkInPhone"], message: "Enter a valid 10-digit mobile number." });
 });
 
 export const billingHeldBillSchema = z.object({
