@@ -29,6 +29,16 @@ export const planSchema = z.object({
   priceInRupees: z.string().trim().regex(/^\d+(?:\.\d{1,2})?$/, "Enter a valid rupee amount with up to two decimals."),
   interval: z.enum(["WEEK", "MONTH", "QUARTER", "YEAR"]),
   status: z.enum(["ACTIVE", "INACTIVE"]),
+  newUserDiscountType: z.enum(["NONE", "FLAT", "PERCENTAGE"]).default("NONE"),
+  newUserDiscountValue: z.coerce.number().min(0, "Discount value cannot be negative.").default(0),
+}).superRefine((data, ctx) => {
+  if (data.newUserDiscountType === "PERCENTAGE" && data.newUserDiscountValue > 100) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["newUserDiscountValue"],
+      message: "Percentage discount cannot exceed 100%.",
+    });
+  }
 });
 
 export const platformSettingsSchema = z.object({

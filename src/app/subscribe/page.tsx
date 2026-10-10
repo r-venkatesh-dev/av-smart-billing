@@ -10,9 +10,7 @@ export default async function SubscribePage({ searchParams }: PageProps<"/subscr
   const supabase = createAdminClient();
   const { data, error } = await supabase
     .from("plans")
-    .select(
-      "id, name, description, features, allow_online_billing, allow_cloud_backup, allow_reports_exports, is_publicly_visible, max_devices, validation_window_days, price_in_paise, interval, status",
-    )
+    .select("*")
     .or("status.eq.ACTIVE,is_publicly_visible.eq.true")
     .order("price_in_paise");
   const plans = error
@@ -21,7 +19,7 @@ export default async function SubscribePage({ searchParams }: PageProps<"/subscr
         id: plan.id,
         name: plan.name,
         description: plan.description,
-        features: Array.isArray(plan.features) ? plan.features.filter((feature): feature is string => typeof feature === "string") : [],
+        features: Array.isArray(plan.features) ? plan.features.filter((feature: unknown): feature is string => typeof feature === "string") : [],
         allowOnlineBilling: plan.allow_online_billing,
         allowCloudBackup: plan.allow_cloud_backup,
         allowReportsExports: plan.allow_reports_exports,
@@ -30,6 +28,8 @@ export default async function SubscribePage({ searchParams }: PageProps<"/subscr
         priceInPaise: Number(plan.price_in_paise),
         interval: plan.interval as "WEEK" | "MONTH" | "QUARTER" | "YEAR",
         purchasable: plan.status === "ACTIVE",
+        newUserDiscountType: ((plan as Record<string, unknown>).new_user_discount_type || "NONE") as "NONE" | "FLAT" | "PERCENTAGE",
+        newUserDiscountValue: Number((plan as Record<string, unknown>).new_user_discount_value ?? 0),
       }));
 
   const initialPlanId = typeof requestedPlan === "string" && plans.some((plan) => plan.id === requestedPlan && plan.purchasable) ? requestedPlan : undefined;

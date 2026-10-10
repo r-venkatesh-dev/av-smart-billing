@@ -72,13 +72,13 @@ export async function listAdminPlans() {
   const supabase = await createSupabaseServerClient();
   const { data, error } = await supabase
     .from("plans")
-    .select("id, name, description, features, allow_online_billing, allow_cloud_backup, allow_reports_exports, is_publicly_visible, max_devices, validation_window_days, price_in_paise, interval, status")
+    .select("*")
     .order("price_in_paise");
   return assertQuery(data, error).map((row) => ({
     id: row.id,
     name: row.name,
     description: row.description,
-    features: Array.isArray(row.features) ? row.features.filter((feature): feature is string => typeof feature === "string") : [],
+    features: Array.isArray(row.features) ? row.features.filter((feature: unknown): feature is string => typeof feature === "string") : [],
     allowOnlineBilling: row.allow_online_billing,
     allowCloudBackup: row.allow_cloud_backup,
     allowReportsExports: row.allow_reports_exports,
@@ -88,6 +88,8 @@ export async function listAdminPlans() {
     priceInPaise: Number(row.price_in_paise),
     interval: row.interval,
     status: row.status,
+    newUserDiscountType: ((row as Record<string, unknown>).new_user_discount_type || "NONE") as "NONE" | "FLAT" | "PERCENTAGE",
+    newUserDiscountValue: Number((row as Record<string, unknown>).new_user_discount_value ?? 0),
   }));
 }
 

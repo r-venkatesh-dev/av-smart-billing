@@ -88,7 +88,22 @@ function planInput(formData: FormData) {
     seen.add(normalized);
     return true;
   });
-  return planSchema.safeParse({ name: formData.get("name"), description: formData.get("description"), features, allowOnlineBilling: formData.get("allowOnlineBilling") === "on", allowCloudBackup: formData.get("allowCloudBackup") === "on", allowReportsExports: formData.get("allowReportsExports") === "on", isPubliclyVisible: formData.get("isPubliclyVisible") === "on", maxDevices: formData.get("maxDevices"), validationWindowDays: formData.get("validationWindowDays"), priceInRupees: formData.get("priceInRupees"), interval: formData.get("interval"), status: formData.get("status") });
+  return planSchema.safeParse({
+    name: formData.get("name"),
+    description: formData.get("description"),
+    features,
+    allowOnlineBilling: formData.get("allowOnlineBilling") === "on",
+    allowCloudBackup: formData.get("allowCloudBackup") === "on",
+    allowReportsExports: formData.get("allowReportsExports") === "on",
+    isPubliclyVisible: formData.get("isPubliclyVisible") === "on",
+    maxDevices: formData.get("maxDevices"),
+    validationWindowDays: formData.get("validationWindowDays"),
+    priceInRupees: formData.get("priceInRupees"),
+    interval: formData.get("interval"),
+    status: formData.get("status"),
+    newUserDiscountType: formData.get("newUserDiscountType") || "NONE",
+    newUserDiscountValue: formData.get("newUserDiscountValue") || 0,
+  });
 }
 
 export async function createPlan(_state: EntityFormState, formData: FormData): Promise<EntityFormState> {
@@ -96,7 +111,22 @@ export async function createPlan(_state: EntityFormState, formData: FormData): P
   const parsed = planInput(formData);
   if (!parsed.success) return { errors: parsed.error.flatten().fieldErrors };
   const supabase = await createSupabaseServerClient();
-  const { data, error } = await supabase.from("plans").insert({ name: parsed.data.name, description: parsed.data.description, features: parsed.data.features, allow_online_billing: parsed.data.allowOnlineBilling, allow_cloud_backup: parsed.data.allowCloudBackup, allow_reports_exports: parsed.data.allowReportsExports, is_publicly_visible: parsed.data.isPubliclyVisible, max_devices: parsed.data.maxDevices, validation_window_days: parsed.data.validationWindowDays, price_in_paise: rupeesToPaise(parsed.data.priceInRupees), interval: parsed.data.interval, status: parsed.data.status }).select().single();
+  const { data, error } = await supabase.from("plans").insert({
+    name: parsed.data.name,
+    description: parsed.data.description,
+    features: parsed.data.features,
+    allow_online_billing: parsed.data.allowOnlineBilling,
+    allow_cloud_backup: parsed.data.allowCloudBackup,
+    allow_reports_exports: parsed.data.allowReportsExports,
+    is_publicly_visible: parsed.data.isPubliclyVisible,
+    max_devices: parsed.data.maxDevices,
+    validation_window_days: parsed.data.validationWindowDays,
+    price_in_paise: rupeesToPaise(parsed.data.priceInRupees),
+    interval: parsed.data.interval,
+    status: parsed.data.status,
+    new_user_discount_type: parsed.data.newUserDiscountType,
+    new_user_discount_value: parsed.data.newUserDiscountValue,
+  }).select().single();
   if (error) return { message: error.message };
   const audit = await supabase.from("audit_logs").insert({ actor_id: actor.id, action: "PLAN_CREATED", entity_type: "plan", entity_id: data.id, after_data: data });
   if (audit.error) throw new Error(`Audit write failed: ${audit.error.message}`);
@@ -112,7 +142,22 @@ export async function updatePlan(id: string, _state: EntityFormState, formData: 
   const supabase = await createSupabaseServerClient();
   const before = await supabase.from("plans").select().eq("id", id).single();
   if (before.error) return { message: before.error.message };
-  const { data, error } = await supabase.from("plans").update({ name: parsed.data.name, description: parsed.data.description, features: parsed.data.features, allow_online_billing: parsed.data.allowOnlineBilling, allow_cloud_backup: parsed.data.allowCloudBackup, allow_reports_exports: parsed.data.allowReportsExports, is_publicly_visible: parsed.data.isPubliclyVisible, max_devices: parsed.data.maxDevices, validation_window_days: parsed.data.validationWindowDays, price_in_paise: rupeesToPaise(parsed.data.priceInRupees), interval: parsed.data.interval, status: parsed.data.status }).eq("id", id).select().single();
+  const { data, error } = await supabase.from("plans").update({
+    name: parsed.data.name,
+    description: parsed.data.description,
+    features: parsed.data.features,
+    allow_online_billing: parsed.data.allowOnlineBilling,
+    allow_cloud_backup: parsed.data.allowCloudBackup,
+    allow_reports_exports: parsed.data.allowReportsExports,
+    is_publicly_visible: parsed.data.isPubliclyVisible,
+    max_devices: parsed.data.maxDevices,
+    validation_window_days: parsed.data.validationWindowDays,
+    price_in_paise: rupeesToPaise(parsed.data.priceInRupees),
+    interval: parsed.data.interval,
+    status: parsed.data.status,
+    new_user_discount_type: parsed.data.newUserDiscountType,
+    new_user_discount_value: parsed.data.newUserDiscountValue,
+  }).eq("id", id).select().single();
   if (error) return { message: error.message };
   await supabase.from("licenses").update({
     allow_online_billing: parsed.data.allowOnlineBilling,

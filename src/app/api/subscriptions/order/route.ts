@@ -3,6 +3,7 @@ import { encryptLicenseKey } from "@/lib/license-key-vault";
 import { createRazorpayOrder, getRazorpayEnv, getSubscriptionLicenseCreatedBy } from "@/lib/razorpay";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { subscriptionOrderSchema } from "@/lib/validation/subscription";
+import { calculatePlanDiscount } from "@/lib/discounts";
 
 export const runtime = "nodejs";
 
@@ -33,7 +34,7 @@ export async function POST(request: Request) {
   }
   const { data: plan, error: planError } = await supabase
     .from("plans")
-    .select("id, name, description, price_in_paise, interval, status")
+    .select("*")
     .eq("id", parsed.data.planId)
     .eq("status", "ACTIVE")
     .maybeSingle();
@@ -45,6 +46,36 @@ export async function POST(request: Request) {
     return Response.json({ ok: false, message: "The selected plan is not available for online purchase." }, { status: 409 });
   }
 
+  let payableAmountInPaise = Number(plan.price_in_paise);
+  let discountAppliedInPaise = 0;
+  const discountType = ((plan as Record<string, unknown>).new_user_discount_type || "NONE") as string;
+  const discountValue = Number((plan as Record<string, unknown>).new_user_discount_value ?? 0);
+
+  if (discountType !== "NONE" && discountValue > 0 && payableAmountInPaise > 0) {
+    const rawPhone = parsed.data.phone;
+    const digits = rawPhone.replace(/\D/g, "");
+    const last10 = digits.slice(-10);
+
+    const [existingCustomers, completedOrders] = await Promise.all([
+      supabase
+        .from("customers")
+        .select("id", { count: "exact", head: true })
+        .or(`phone.eq.${digits},phone.ilike.%${last10}%`),
+      supabase
+        .from("subscription_orders")
+        .select("id", { count: "exact", head: true })
+        .or(`phone.eq.${digits},phone.ilike.%${last10}%`)
+        .in("status", ["PAID", "PAYMENT_CAPTURED"]),
+    ]);
+
+    const isFirstTime = (existingCustomers.count ?? 0) === 0 && (completedOrders.count ?? 0) === 0;
+    if (isFirstTime) {
+      const calculation = calculatePlanDiscount(payableAmountInPaise, discountType, discountValue);
+      payableAmountInPaise = calculation.discountedPriceInPaise;
+      discountAppliedInPaise = calculation.discountAmountInPaise;
+    }
+  }
+
   const purchase = {
     plan_id: plan.id,
     company_name: parsed.data.companyName,
@@ -54,7 +85,7 @@ export async function POST(request: Request) {
     address: parsed.data.address,
     gstin: parsed.data.gstin || null,
     plan_name: plan.name,
-    amount_in_paise: Number(plan.price_in_paise),
+    amount_in_paise: payableAmountInPaise,
     status: "CREATED",
   };
   const { data: orderRecord, error: insertError } = await supabase
@@ -106,7 +137,11 @@ export async function POST(request: Request) {
     const razorpayOrder = await createRazorpayOrder({
       amount: purchase.amount_in_paise,
       receipt: `sub_${orderRecord.id.replaceAll("-", "").slice(0, 28)}`,
-      notes: { subscription_order_id: orderRecord.id, plan_id: plan.id },
+      notes: {
+        subscription_order_id: orderRecord.id,
+        plan_id: plan.id,
+        discount_paise: String(discountAppliedInPaise),
+      },
     });
     const { error } = await supabase.from("subscription_orders").update({
       razorpay_order_id: razorpayOrder.id,

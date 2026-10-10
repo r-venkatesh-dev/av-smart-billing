@@ -3,6 +3,7 @@ import { Check, MonitorSmartphone, X } from "lucide-react";
 import { PublicPageIntro, PublicSite } from "@/components/public-site";
 import { formatMoney } from "@/lib/format";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { calculatePlanDiscount } from "@/lib/discounts";
 
 export const metadata = {
   title: "Plans and pricing",
@@ -14,7 +15,7 @@ export default async function PublicPlansPage() {
   const supabase = createAdminClient();
   const { data, error } = await supabase
     .from("plans")
-    .select("id, name, description, features, allow_online_billing, allow_cloud_backup, allow_reports_exports, is_publicly_visible, max_devices, validation_window_days, price_in_paise, interval, status")
+    .select("*")
     .or("status.eq.ACTIVE,is_publicly_visible.eq.true")
     .order("price_in_paise");
   const plans = error ? [] : (data ?? []).filter((plan) => plan.status === "ACTIVE" || (plan.status === "INACTIVE" && plan.is_publicly_visible));
@@ -35,15 +36,37 @@ export default async function PublicPlansPage() {
               const purchasable = plan.status === "ACTIVE";
               const isFree = Number(plan.price_in_paise) === 0;
               const features = Array.isArray(plan.features)
-                ? plan.features.filter((feature): feature is string => typeof feature === "string")
+                ? plan.features.filter((feature: unknown): feature is string => typeof feature === "string")
                 : [];
+              const discountType = (plan.new_user_discount_type || "NONE") as string;
+              const discountValue = Number(plan.new_user_discount_value ?? 0);
+              const discountCalc = calculatePlanDiscount(Number(plan.price_in_paise), discountType, discountValue);
+
               return (
                 <article key={plan.id} className="border border-[#dfe3e1] bg-white p-5">
                   <div className="flex items-start justify-between gap-3">
                     <div><h2 className="text-2xl">{plan.name}</h2><p className="mt-1 text-xs leading-5 text-[#6d716f]">{plan.description}</p></div>
                     <span className="shrink-0 bg-[#e6f2f0] px-2.5 py-1.5 text-[9px] font-bold uppercase tracking-[.1em] text-[#057c73]">{purchasable ? (isFree ? "Free" : "Available") : "Coming soon"}</span>
                   </div>
-                  <p className="mt-4"><strong className="text-3xl tracking-[-.04em]">{formatMoney(Number(plan.price_in_paise))}</strong><span className="text-xs text-[#6d716f]"> / {String(plan.interval).toLowerCase()}</span></p>
+                  {discountCalc.hasDiscount ? (
+                    <div className="mt-4">
+                      <div className="flex items-baseline gap-2">
+                        <strong className="text-3xl tracking-[-.04em] text-emerald-800">
+                          {formatMoney(discountCalc.discountedPriceInPaise)}
+                        </strong>
+                        <span className="text-sm text-[#8a908d] line-through">
+                          {formatMoney(Number(plan.price_in_paise))}
+                        </span>
+                        <span className="text-xs text-[#6d716f]"> / {String(plan.interval).toLowerCase()}</span>
+                      </div>
+                      <div className="mt-1.5 inline-flex items-center gap-1.5 rounded border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-[.08em] text-emerald-700">
+                        <span>🎉 New user offer:</span>
+                        <span>{discountCalc.discountLabel}</span>
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="mt-4"><strong className="text-3xl tracking-[-.04em]">{formatMoney(Number(plan.price_in_paise))}</strong><span className="text-xs text-[#6d716f]"> / {String(plan.interval).toLowerCase()}</span></p>
+                  )}
                   <div className="my-4 h-px bg-[#dfe3e1]" />
                   <ul className="space-y-2 text-xs leading-5 text-[#475467]">
                     <li className="flex gap-2"><MonitorSmartphone size={15} className="mt-0.5 shrink-0 text-[#057c73]" />Up to {plan.max_devices} device{plan.max_devices === 1 ? "" : "s"}</li>
@@ -52,7 +75,7 @@ export default async function PublicPlansPage() {
                     <li className="flex gap-2"><Check size={15} className="mt-0.5 shrink-0 text-[#057c73]" />{plan.allow_online_billing ? "Offline + Online billing included" : "Offline billing only"}</li>
                     <li className="flex gap-2">{plan.allow_cloud_backup ? <Check size={15} className="mt-0.5 shrink-0 text-[#057c73]" /> : <X size={15} className="mt-0.5 shrink-0 text-rose-500" />}{plan.allow_cloud_backup ? "Cloud backup included" : "Cloud backup not included"}</li>
                     <li className="flex gap-2">{plan.allow_reports_exports ? <Check size={15} className="mt-0.5 shrink-0 text-[#057c73]" /> : <X size={15} className="mt-0.5 shrink-0 text-rose-500" />}{plan.allow_reports_exports ? "Reports & exports included" : "Reports & exports not included"}</li>
-                    {features.map((feature) => <li key={feature} className="flex gap-2"><Check size={15} className="mt-0.5 shrink-0 text-[#057c73]" />{feature}</li>)}
+                    {features.map((feature: string) => <li key={feature} className="flex gap-2"><Check size={15} className="mt-0.5 shrink-0 text-[#057c73]" />{feature}</li>)}
                   </ul>
                   {purchasable ? <Link href={`/subscribe?plan=${plan.id}`} className="mt-5 flex h-11 items-center justify-center bg-[#057c73] px-4 text-[10px] font-bold uppercase tracking-[.1em] text-white">Choose {plan.name}</Link> : <span className="mt-5 flex h-11 items-center justify-center border border-[#dfe3e1] bg-[#f4f5f4] px-4 text-[10px] font-bold uppercase tracking-[.1em] text-[#8a908d]">Not available for purchase</span>}
                 </article>

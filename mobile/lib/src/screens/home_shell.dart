@@ -512,10 +512,20 @@ class _HomeShellState extends State<HomeShell> {
               ),
               onPressed: () async {
                 Navigator.pop(sheetContext);
-                final url = await widget.controller.licenses.getRenewalUrl(session);
-                final uri = Uri.parse(url);
-                if (await canLaunchUrl(uri)) {
-                  await launchUrl(uri, mode: LaunchMode.externalApplication);
+                try {
+                  final url = await widget.controller.licenses.getRenewalUrl(session);
+                  final uri = Uri.parse(url);
+                  final launched = await launchUrl(
+                    uri,
+                    mode: LaunchMode.externalApplication,
+                  );
+                  if (!launched && mounted) {
+                    showMessage(context, 'Could not open browser. Please visit: $url', error: true);
+                  }
+                } catch (e) {
+                  if (mounted) {
+                    showMessage(context, errorMessage(e), error: true);
+                  }
                 }
               },
             ),

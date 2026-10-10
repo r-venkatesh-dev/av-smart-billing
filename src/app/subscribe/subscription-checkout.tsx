@@ -10,7 +10,9 @@ import {
   KeyRound,
   LoaderCircle,
   ShieldCheck,
+  Sparkles,
 } from "lucide-react";
+import { calculatePlanDiscount } from "@/lib/discounts";
 
 type Plan = {
   id: string;
@@ -25,6 +27,8 @@ type Plan = {
   priceInPaise: number;
   interval: "WEEK" | "MONTH" | "QUARTER" | "YEAR";
   purchasable: boolean;
+  newUserDiscountType?: "NONE" | "FLAT" | "PERCENTAGE";
+  newUserDiscountValue?: number;
 };
 type Details = {
   companyName: string;
@@ -112,6 +116,7 @@ export function SubscriptionCheckout({
   const [step, setStep] = useState<"DETAILS" | "PLAN" | "SUCCESS">("DETAILS");
   const [details, setDetails] = useState<Details>(emptyDetails);
   const [selectedPlanId, setSelectedPlanId] = useState(initialPlanId ?? "");
+  const [isFirstTimeCustomer, setIsFirstTimeCustomer] = useState<boolean | null>(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [licenseKey, setLicenseKey] = useState("");
@@ -123,6 +128,46 @@ export function SubscriptionCheckout({
     () => plans.find((plan) => plan.id === selectedPlanId),
     [plans, selectedPlanId],
   );
+
+  const selectedPlanDiscount = useMemo(
+    () =>
+      calculatePlanDiscount(
+        selectedPlan?.priceInPaise ?? 0,
+        selectedPlan?.newUserDiscountType,
+        selectedPlan?.newUserDiscountValue,
+      ),
+    [selectedPlan],
+  );
+
+  const effectivePayableAmount =
+    isFirstTimeCustomer === true && selectedPlanDiscount.hasDiscount
+      ? selectedPlanDiscount.discountedPriceInPaise
+      : (selectedPlan?.priceInPaise ?? 0);
+
+  async function handleDetailsSubmit(event: React.FormEvent) {
+    event.preventDefault();
+    setMessage("");
+    setBusy(true);
+    try {
+      const res = await fetch("/api/subscriptions/eligibility", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone: details.phone }),
+      });
+      const data = await res.json().catch(() => null);
+      if (res.ok && data && typeof data.isFirstTimeCustomer === "boolean") {
+        setIsFirstTimeCustomer(data.isFirstTimeCustomer);
+      } else {
+        setIsFirstTimeCustomer(null);
+      }
+      setStep("PLAN");
+    } catch (err) {
+      console.error("Eligibility check failed:", err);
+      setStep("PLAN");
+    } finally {
+      setBusy(false);
+    }
+  }
 
   useEffect(() => {
     if (!licenseKey) return;
@@ -445,11 +490,7 @@ export function SubscriptionCheckout({
         </div>
         {step === "DETAILS" ? (
           <form
-            onSubmit={(event) => {
-              event.preventDefault();
-              setMessage("");
-              setStep("PLAN");
-            }}
+            onSubmit={handleDetailsSubmit}
             className="grid gap-4 sm:grid-cols-2"
           >
             <Field
@@ -505,58 +546,113 @@ export function SubscriptionCheckout({
             </label>
             <button
               type="submit"
-              className="h-12 bg-[#057c73] px-6 text-xs font-bold uppercase tracking-[.1em] text-white sm:col-span-2"
+              disabled={busy}
+              className="flex h-12 items-center justify-center gap-2 bg-[#057c73] px-6 text-xs font-bold uppercase tracking-[.1em] text-white disabled:opacity-50 sm:col-span-2"
             >
-              Proceed to choose plan
+              {busy ? <LoaderCircle className="animate-spin" size={17} /> : null}
+              {busy ? "Checking mobile number…" : "Proceed to choose plan"}
             </button>
           </form>
         ) : (
           <div>
+            {isFirstTimeCustomer === true ? (
+              <div className="mb-4 flex items-center gap-2.5 rounded-lg border border-emerald-300 bg-emerald-50/90 p-3 text-xs text-emerald-950">
+                <Sparkles size={17} className="shrink-0 text-emerald-600" />
+                <div>
+                  <strong className="font-bold">Welcome offer unlocked!</strong> For new mobile number <strong>{details.phone}</strong>, special first-time discounts are automatically applied below.
+                </div>
+              </div>
+            ) : isFirstTimeCustomer === false ? (
+              <div className="mb-4 flex items-center gap-2.5 rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs text-slate-700">
+                <div>
+                  <strong className="font-semibold">Welcome back!</strong> Mobile number <strong>{details.phone}</strong> is already registered. Standard pricing applies.
+                </div>
+              </div>
+            ) : null}
+
             <div className="grid gap-4 sm:grid-cols-2">
-              {plans.map((plan) => (
-                <button
-                  type="button"
-                  key={plan.id}
-                  onClick={() => plan.purchasable && setSelectedPlanId(plan.id)}
-                  disabled={!plan.purchasable}
-                  className={`relative border p-4 text-left transition disabled:cursor-not-allowed disabled:bg-[#f4f5f4] disabled:opacity-75 ${selectedPlanId === plan.id ? "border-[#057c73] bg-[#e6f2f0] ring-1 ring-[#057c73]" : "border-[#dfe3e1] hover:border-[#8a908d]"}`}
-                >
-                  <span className="block text-xl font-bold">{plan.name}</span>
-                  {!plan.purchasable ? <span className="mt-1 inline-block bg-[#e6f2f0] px-2 py-1 text-[9px] font-bold uppercase tracking-[.1em] text-[#057c73]">Coming soon</span> : null}
-                  <span className="mt-1 block text-xs leading-5 text-[#6d716f]">
-                    {plan.description}
-                  </span>
-                  <strong className="mt-3 block text-xl">
-                    {formatMoney(plan.priceInPaise)}{" "}
-                    <small className="text-xs font-normal text-[#6d716f]">
-                      / {plan.interval.toLowerCase()}
-                    </small>
-                  </strong>
-                  <span className="mt-2 block text-xs text-[#475467]">
-                    {plan.maxDevices} device{plan.maxDevices === 1 ? "" : "s"} ·{" "}
-                    {plan.validationWindowDays}-day offline validation
-                  </span>
-                  <span className="mt-1 block text-xs font-medium text-[#475467]">
-                    {plan.allowOnlineBilling ? "Offline + Online billing" : "Offline billing only"} · {plan.allowCloudBackup ? "Cloud backup" : "No cloud backup"} · {plan.allowReportsExports ? "Reports & exports" : "No reports or exports"}
-                  </span>
-                  {plan.features.length ? (
-                    <ul className="mt-3 space-y-1.5 border-t border-[#dfe3e1] pt-3 text-xs text-[#475467]">
-                      {plan.features.map((feature) => (
-                        <li key={feature} className="flex gap-1.5">
-                          <Check size={13} className="mt-0.5 shrink-0 text-[#057c73]" />
-                          {feature}
-                        </li>
-                      ))}
-                    </ul>
-                  ) : null}
-                  {selectedPlanId === plan.id ? (
-                    <CheckCircle2
-                      className="absolute right-4 top-4 text-[#057c73]"
-                      size={20}
-                    />
-                  ) : null}
-                </button>
-              ))}
+              {plans.map((plan) => {
+                const planDiscount = calculatePlanDiscount(
+                  plan.priceInPaise,
+                  plan.newUserDiscountType,
+                  plan.newUserDiscountValue,
+                );
+                const isDiscountEligible = isFirstTimeCustomer === true && planDiscount.hasDiscount;
+                const displayPrice = isDiscountEligible
+                  ? planDiscount.discountedPriceInPaise
+                  : plan.priceInPaise;
+
+                return (
+                  <button
+                    type="button"
+                    key={plan.id}
+                    onClick={() => plan.purchasable && setSelectedPlanId(plan.id)}
+                    disabled={!plan.purchasable}
+                    className={`relative border p-4 text-left transition disabled:cursor-not-allowed disabled:bg-[#f4f5f4] disabled:opacity-75 ${selectedPlanId === plan.id ? "border-[#057c73] bg-[#e6f2f0] ring-1 ring-[#057c73]" : "border-[#dfe3e1] hover:border-[#8a908d]"}`}
+                  >
+                    <span className="block text-xl font-bold">{plan.name}</span>
+                    {!plan.purchasable ? <span className="mt-1 inline-block bg-[#e6f2f0] px-2 py-1 text-[9px] font-bold uppercase tracking-[.1em] text-[#057c73]">Coming soon</span> : null}
+                    <span className="mt-1 block text-xs leading-5 text-[#6d716f]">
+                      {plan.description}
+                    </span>
+                    {isDiscountEligible ? (
+                      <div className="mt-3">
+                        <div className="flex items-baseline gap-2">
+                          <strong className="block text-xl font-bold text-emerald-800">
+                            {formatMoney(displayPrice)}{" "}
+                            <small className="text-xs font-normal text-[#6d716f]">
+                              / {plan.interval.toLowerCase()}
+                            </small>
+                          </strong>
+                          <span className="text-xs text-[#8a908d] line-through">
+                            {formatMoney(plan.priceInPaise)}
+                          </span>
+                        </div>
+                        <span className="mt-1 inline-block rounded bg-emerald-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-emerald-800">
+                          🎉 {planDiscount.discountLabel}
+                        </span>
+                      </div>
+                    ) : (
+                      <div className="mt-3">
+                        <strong className="block text-xl">
+                          {formatMoney(plan.priceInPaise)}{" "}
+                          <small className="text-xs font-normal text-[#6d716f]">
+                            / {plan.interval.toLowerCase()}
+                          </small>
+                        </strong>
+                        {planDiscount.hasDiscount && isFirstTimeCustomer === null ? (
+                          <span className="mt-1 inline-block rounded bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700">
+                            First-time offer: {planDiscount.discountLabel}
+                          </span>
+                        ) : null}
+                      </div>
+                    )}
+                    <span className="mt-2 block text-xs text-[#475467]">
+                      {plan.maxDevices} device{plan.maxDevices === 1 ? "" : "s"} ·{" "}
+                      {plan.validationWindowDays}-day offline validation
+                    </span>
+                    <span className="mt-1 block text-xs font-medium text-[#475467]">
+                      {plan.allowOnlineBilling ? "Offline + Online billing" : "Offline billing only"} · {plan.allowCloudBackup ? "Cloud backup" : "No cloud backup"} · {plan.allowReportsExports ? "Reports & exports" : "No reports or exports"}
+                    </span>
+                    {plan.features.length ? (
+                      <ul className="mt-3 space-y-1.5 border-t border-[#dfe3e1] pt-3 text-xs text-[#475467]">
+                        {plan.features.map((feature) => (
+                          <li key={feature} className="flex gap-1.5">
+                            <Check size={13} className="mt-0.5 shrink-0 text-[#057c73]" />
+                            {feature}
+                          </li>
+                        ))}
+                      </ul>
+                    ) : null}
+                    {selectedPlanId === plan.id ? (
+                      <CheckCircle2
+                        className="absolute right-4 top-4 text-[#057c73]"
+                        size={20}
+                      />
+                    ) : null}
+                  </button>
+                );
+              })}
             </div>
             {plansUnavailable ? (
               <p className="mt-4 bg-rose-50 p-3 text-sm text-rose-700">
@@ -589,12 +685,16 @@ export function SubscriptionCheckout({
               >
                 {busy ? (
                   <LoaderCircle className="animate-spin" size={17} />
-                ) : selectedPlan?.priceInPaise === 0 ? (
+                ) : effectivePayableAmount === 0 ? (
                   <KeyRound size={17} />
                 ) : (
                   <CreditCard size={17} />
                 )}
-                {busy ? "Please wait…" : selectedPlan?.priceInPaise === 0 ? "Generate activation key" : "Pay securely"}
+                {busy
+                  ? "Please wait…"
+                  : effectivePayableAmount === 0
+                    ? "Generate activation key"
+                    : `Pay ${formatMoney(effectivePayableAmount)}`}
               </button>
             </div>
           </div>
@@ -604,7 +704,7 @@ export function SubscriptionCheckout({
         <ShieldCheck size={24} className="text-[#057c73]" />
         <h2 className="mt-3 text-xl">Secure activation</h2>
         <ul className="mt-3 space-y-2 text-xs leading-5 text-[#6d716f]">
-          {selectedPlan?.priceInPaise === 0 ? (
+          {effectivePayableAmount === 0 ? (
             <li className="flex gap-2">
               <Check size={15} className="mt-0.5 shrink-0 text-[#057c73]" />
               Free plans do not open Razorpay or require payment.
@@ -630,9 +730,26 @@ export function SubscriptionCheckout({
           <div className="mt-4 border-t border-[#dfe3e1] pt-3">
             <span className="text-xs text-[#6d716f]">Selected plan</span>
             <strong className="mt-1 block">{selectedPlan.name}</strong>
-            <span className="mt-1 block text-lg font-bold">
-              {formatMoney(selectedPlan.priceInPaise)}
-            </span>
+            {isFirstTimeCustomer === true && selectedPlanDiscount.hasDiscount ? (
+              <div className="mt-2 space-y-1.5 rounded-lg border border-emerald-200 bg-emerald-50/70 p-2.5 text-xs">
+                <div className="flex justify-between text-[#6d716f]">
+                  <span>Regular price:</span>
+                  <span className="line-through">{formatMoney(selectedPlan.priceInPaise)}</span>
+                </div>
+                <div className="flex justify-between font-semibold text-emerald-800">
+                  <span>Welcome offer:</span>
+                  <span>-{formatMoney(selectedPlanDiscount.discountAmountInPaise)} ({selectedPlanDiscount.discountLabel})</span>
+                </div>
+                <div className="flex justify-between border-t border-emerald-200/80 pt-1.5 font-bold text-emerald-950">
+                  <span>Payable amount:</span>
+                  <span className="text-base text-emerald-800">{formatMoney(effectivePayableAmount)}</span>
+                </div>
+              </div>
+            ) : (
+              <span className="mt-1 block text-lg font-bold">
+                {formatMoney(selectedPlan.priceInPaise)}
+              </span>
+            )}
           </div>
         ) : null}
       </aside>
